@@ -22,8 +22,6 @@ Deploy via Docker Compose. The application uses a persistent volume to save your
 ### `docker-compose.yml`
 
 ```yaml
-version: '3.8'
-
 services:
   power-tracker:
     image: your-repo/power-tracker:latest # Replace with your build details if publishing
