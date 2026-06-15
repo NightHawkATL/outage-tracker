@@ -25,6 +25,7 @@ def load_config():
             cfg.setdefault("longitude", "")
             return cfg
     
+    # Clean slate defaults for new installs
     config = {
         "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
@@ -42,6 +43,7 @@ def save_config(config):
 
 app_config = load_config()
 
+# In-memory State
 state = {
     "is_outage": False, "customers_affected": 0, "outage_start_time": None,
     "alert_sent": False, "last_check": None, "error_msg": None,
@@ -58,18 +60,14 @@ def update_outage_map():
         logging.warning("Mapbox credentials or coordinates are missing. Skipping map.")
         return None
         
-    # Removed the 'bolt' icon to ensure 100% compatibility. Now uses a solid Red Large Pin.
     url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
-    
     try:
         resp = requests.get(url, timeout=10)
-        resp.raise_for_status() # This will throw an error if Mapbox rejects the URL
-        
+        resp.raise_for_status()
         filepath = "static/outage_map.jpg"
         with open(filepath, 'wb') as f:
             f.write(resp.content)
         return filepath
-        
     except Exception as e:
         logging.error(f"Mapbox Generation Error: {e}")
         return None
@@ -223,12 +221,22 @@ def poll_gp_outages():
                 state["error_msg"] = None
                 affected = 0
                 
-                for area in report_data.get("areas", []):
-                    area_name = str(area.get("name", area.get("id", "")))
-                    if zip_c in area_name:
-                        cust_a = area.get("cust_a", 0)
-                        affected = int(cust_a.get("val", 0)) if isinstance(cust_a, dict) else int(cust_a)
-                        break
+                # --- PARSER 1: KUBRA Maps (Georgia Power, Duke, etc) ---
+                if "areas" in report_data:
+                    for area in report_data.get("areas", []):
+                        area_name = str(area.get("name", area.get("id", "")))
+                        if zip_c in area_name:
+                            cust_a = area.get("cust_a", 0)
+                            affected = int(cust_a.get("val", 0)) if isinstance(cust_a, dict) else int(cust_a)
+                            break
+                            
+                # --- PARSER 2: Pacific Power / PacifiCorp Maps ---
+                elif "zips" in report_data:
+                    for z in report_data.get("zips", []):
+                        if str(z.get("zipCode", "")) == zip_c:
+                            # Combine Planned and Unplanned customer outages
+                            affected = int(z.get("custOutPlan", 0)) + int(z.get("custOutUnplan", 0))
+                            break
 
                 state["customers_affected"] = affected
 
