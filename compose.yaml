@@ -6,16 +6,16 @@ services:
     ports:
       - "8585:8080"
     environment:
-      - TZ=America/New_York
+      - TZ=${TZ}
       # --- Georgia Power Settings ---
-      - ZIP_CODE=30008
-      - THRESHOLD_MINUTES=45 
-      - KUBRA_CONFIG_URL=https://outagemap.georgiapower.com/resources/data/external/datapoint_generation/config/config.json
+      - ZIP_CODE=${ZIP_CODE}
+      - THRESHOLD_MINUTES=${TRESHOLD_MINUTES} 
+      - KUBRA_CONFIG_URL=${KUPRA_CONFIG_URL}
       # --- Pushover Settings ---
-      - PUSHOVER_USER_KEY=your_user_key_here
-      - PUSHOVER_API_TOKEN=your_api_token_here
+      - PUSHOVER_USER_KEY=${USER_KEY}
+      - PUSHOVER_API_TOKEN=${PUSHOVER_TOKEN}
       # --- NUT Server Settings ---
-      - NUT_HOST=100.x.x.x # The Tailscale/VPN IP of your home NUT server
-      - NUT_PORT=3493
-      - NUT_UPS_NAME=ups # The name of your UPS in nut.conf
-      - UPS_MIN_RUNTIME_MINUTES=10 # Fire critical alert if battery drops below this
+      - NUT_HOST=${NUT_HOST} # The Tailscale/VPN IP of your home NUT server
+      - NUT_PORT=${NUT_PORT}
+      - NUT_UPS_NAME=${NUT_UPS_NAME} # The name of your UPS in nut.conf
+      - UPS_MIN_RUNTIME_MINUTES=${UPS_MIN_RUNTIME_MINUTES} # Fire critical alert if battery drops below this
