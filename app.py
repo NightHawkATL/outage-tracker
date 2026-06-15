@@ -19,7 +19,7 @@ KUBRA_THEMATIC_URL = os.getenv("KUBRA_THEMATIC_URL")
 
 NUT_HOST = os.getenv("NUT_HOST")
 NUT_PORT = int(os.getenv("NUT_PORT", "3493"))
-NUT_UPS_NAME = os.getenv("NUT_UPS_NAME", "ups")
+NUT_UPS_NAME = os.getenv("NUT_UPS_NAME", "auto")
 UPS_MIN_RUNTIME_MINUTES = int(os.getenv("UPS_MIN_RUNTIME_MINUTES", "10"))
 
 # In-memory State
@@ -59,11 +59,35 @@ def send_pushover(title, message, priority=1):
 
 # --- NUT Integration ---
 def fetch_nut_vars():
+    global NUT_UPS_NAME
     vars_dict = {}
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(5)
             s.connect((NUT_HOST, NUT_PORT))
+            
+            # AUTO-DISCOVERY: If name is 'auto', ask the server for its UPS list
+            if NUT_UPS_NAME.lower() == "auto":
+                s.sendall(b"LIST UPS\n")
+                ups_data = b""
+                while True:
+                    chunk = s.recv(4096)
+                    if not chunk: break
+                    ups_data += chunk
+                    if b"END LIST UPS" in ups_data:
+                        break
+                
+                # Parse the response (Format: UPS <upsname> "<description>")
+                for line in ups_data.decode('ascii').split('\n'):
+                    if line.startswith('UPS '):
+                        NUT_UPS_NAME = line.split(' ')[1]
+                        logging.info(f"Auto-discovered NUT UPS name: {NUT_UPS_NAME}")
+                        break
+                        
+                if NUT_UPS_NAME.lower() == "auto":
+                    raise ValueError("Could not automatically discover UPS name from server.")
+
+            # Fetch variables for the specific UPS
             s.sendall(f"LIST VAR {NUT_UPS_NAME}\n".encode('ascii'))
             
             data = b""
@@ -74,6 +98,7 @@ def fetch_nut_vars():
                 if b"END LIST VAR" in data:
                     break
         
+        # Parse the variable data
         for line in data.decode('ascii').split('\n'):
             if line.startswith('VAR'):
                 parts = line.strip().split(' ', 3)
@@ -83,6 +108,7 @@ def fetch_nut_vars():
                     vars_dict[v_name] = v_val
         return vars_dict
     except Exception as e:
+        logging.error(f"NUT Socket Error: {e}")
         return None
 
 def poll_nut():
@@ -116,7 +142,7 @@ def poll_nut():
                     )
                 state["nut_alert_sent"] = False
         else:
-            state["nut_error"] = f"Failed to connect to {NUT_HOST}:{NUT_PORT}"
+            state["nut_error"] = f"Failed to fetch data from {NUT_HOST}:{NUT_PORT}"
             
         time.sleep(30)
 
@@ -135,14 +161,12 @@ def poll_gp_outages():
             state["error_msg"] = None
             affected_in_zip = 0
             
-            # KUBRA V5 stores regions in 'areas'
             areas = report_data.get("areas", [])
             
             for area in areas:
                 area_name = str(area.get("name", area.get("id", "")))
                 if ZIP_CODE in area_name:
                     cust_a = area.get("cust_a", 0)
-                    # Handle data structure variations safely
                     if isinstance(cust_a, dict):
                         affected_in_zip = int(cust_a.get("val", 0))
                     else:
@@ -180,7 +204,7 @@ def poll_gp_outages():
             state["error_msg"] = str(e)
             logging.error(f"Error fetching GP data: {e}")
 
-        time.sleep(300) # Poll every 5 minutes
+        time.sleep(300) 
 
 @app.route("/")
 def index():
