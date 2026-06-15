@@ -55,17 +55,21 @@ def update_outage_map():
     lon = app_config.get("longitude")
     
     if not token or not lat or not lon:
+        logging.warning("Mapbox credentials or coordinates are missing. Skipping map.")
         return None
         
-    # Uses a dark map style with a red lightning bolt pin at your coordinates
-    url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l-bolt+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
+    # Removed the 'bolt' icon to ensure 100% compatibility. Now uses a solid Red Large Pin.
+    url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
+    
     try:
         resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
+        resp.raise_for_status() # This will throw an error if Mapbox rejects the URL
+        
         filepath = "static/outage_map.jpg"
         with open(filepath, 'wb') as f:
             f.write(resp.content)
         return filepath
+        
     except Exception as e:
         logging.error(f"Mapbox Generation Error: {e}")
         return None
