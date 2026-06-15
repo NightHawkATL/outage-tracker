@@ -25,16 +25,19 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">Power Company Name</label>
-                        <select name="company_name" class="form-select bg-dark text-white border-secondary">
-                            <option value="{{ config.company_name }}" selected hidden>{{ config.company_name }}</option>
-                            <option>Georgia Power</option>
-                            <option>Alabama Power</option>
-                            <option>Mississippi Power</option>
-                            <option>Duke Energy</option>
-                            <option>FirstEnergy</option>
-                            <option>National Grid</option>
-                            <option>AEP / PSEG / Other KUBRA</option>
-                        </select>
+                        <!-- NEW: Datalist acts as both a dropdown AND a custom text input -->
+                        <input list="company_list" name="company_name" class="form-control bg-dark text-white border-secondary" value="{{ config.company_name }}" placeholder="Select or type custom name..." required>
+                        <datalist id="company_list">
+                            <option value="Georgia Power">
+                            <option value="Alabama Power">
+                            <option value="Mississippi Power">
+                            <option value="Duke Energy">
+                            <option value="FirstEnergy">
+                            <option value="National Grid">
+                            <option value="Entergy">
+                            <option value="ComEd">
+                            <option value="PECO">
+                        </datalist>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Zip Code (To Track)</label>
@@ -45,7 +48,7 @@
                         <input type="url" name="kubra_url" class="form-control bg-dark text-white border-secondary" value="{{ config.kubra_url }}" placeholder="https://kubra.io/data/...">
                     </div>
                     
-                    <!-- NEW: Map and Report Links -->
+                    <!-- Map and Report Links -->
                     <div class="col-md-6">
                         <label class="form-label">Map Website URL (For Banner)</label>
                         <input type="url" name="map_url" class="form-control bg-dark text-white border-secondary" value="{{ config.map_url }}">
@@ -77,33 +80,3 @@
                         <input type="number" name="nut_port" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_port }}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">UPS Names (Comma separated or 'auto')</label>
-                        <input type="text" name="nut_ups_names" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_ups_names }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Critical Min. Runtime (Minutes)</label>
-                        <input type="number" name="ups_min_runtime" class="form-control bg-dark text-white border-secondary" value="{{ config.ups_min_runtime }}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Pushover Settings -->
-            <div class="card p-4 mb-4">
-                <h4 class="text-info mb-3">Pushover Notifications</h4>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">User Key</label>
-                        <input type="password" name="pushover_user" class="form-control bg-dark text-white border-secondary" value="{{ config.pushover_user }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">API Token</label>
-                        <input type="password" name="pushover_token" class="form-control bg-dark text-white border-secondary" value="{{ config.pushover_token }}">
-                    </div>
-                </div>
-            </div>
-
-            <button type="submit" class="btn btn-success w-100 p-3 fw-bold fs-5">💾 Save Configuration</button>
-        </form>
-    </div>
-</body>
-</html>
