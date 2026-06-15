@@ -9,10 +9,10 @@ services:
       - TZ=${TZ}
       # --- Georgia Power Settings ---
       - ZIP_CODE=${ZIP_CODE}
-      - THRESHOLD_MINUTES=${TRESHOLD_MINUTES} 
-      - KUBRA_CONFIG_URL=${KUPRA_CONFIG_URL}
+      - THRESHOLD_MINUTES=${THRESHOLD_MINUTES} 
+      - KUBRA_CONFIG_URL=${KUBRA_CONFIG_URL}
       # --- Pushover Settings ---
-      - PUSHOVER_USER_KEY=${USER_KEY}
+      - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY}
       - PUSHOVER_API_TOKEN=${PUSHOVER_TOKEN}
       # --- NUT Server Settings ---
       - NUT_HOST=${NUT_HOST} # The Tailscale/VPN IP of your home NUT server
