@@ -45,8 +45,6 @@ Deploy via Docker Compose. The application uses a single persistent volume to sa
 ### `docker-compose.yml`
 
 ```yaml
-version: '3.8'
-
 services:
   power-tracker:
     image: your-repo/power-tracker:latest
