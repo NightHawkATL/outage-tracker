@@ -1,4 +1,4 @@
-# ⚡ Power Tracker
+# ⚡ Outage Tracker
 
 Power Tracker is a lightweight, self-hosted Docker application designed to monitor both your local home rack's battery health and your neighborhood's power grid simultaneously. 
 
@@ -48,7 +48,7 @@ Deploy via Docker Compose. The application uses a single persistent volume to sa
 services:
   power-tracker:
     build: .
-    container_name: power-tracker
+    container_name: outage-tracker
     restart: unless-stopped
     ports:
       - "8080:8080"
