@@ -12,7 +12,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 CONFIG_FILE = "data/config.json"
-os.makedirs("static", exist_ok=True) # Ensure static folder exists for map images
+os.makedirs("static", exist_ok=True)
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -25,7 +25,6 @@ def load_config():
             cfg.setdefault("longitude", "")
             return cfg
     
-    # Clean slate defaults for new installs
     config = {
         "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
@@ -46,12 +45,11 @@ app_config = load_config()
 # In-memory State
 state = {
     "is_outage": False, "customers_affected": 0, "outage_start_time": None,
-    "alert_sent": False, "last_check": None, "error_msg": None,
+    "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
     "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None
 }
 
 def update_outage_map():
-    """Generates a static map image from Mapbox and saves it locally."""
     token = app_config.get("mapbox_token")
     lat = app_config.get("latitude")
     lon = app_config.get("longitude")
@@ -128,6 +126,7 @@ def config_page():
         state["is_outage"] = False
         state["outage_start_time"] = None
         state["alert_sent"] = False
+        state["etr"] = "Unavailable"
         return redirect(url_for('index'))
     return render_template("config.html", config=app_config)
 
@@ -220,25 +219,36 @@ def poll_gp_outages():
                 state["last_check"] = datetime.now().strftime("%I:%M %p")
                 state["error_msg"] = None
                 affected = 0
+                etr_found = "Unavailable"
                 
-                # --- PARSER 1: KUBRA Maps (Georgia Power, Duke, etc) ---
+                # --- PARSER 1: KUBRA Maps ---
                 if "areas" in report_data:
                     for area in report_data.get("areas", []):
                         area_name = str(area.get("name", area.get("id", "")))
                         if zip_c in area_name:
                             cust_a = area.get("cust_a", 0)
                             affected = int(cust_a.get("val", 0)) if isinstance(cust_a, dict) else int(cust_a)
+                            
+                            # Attempt to extract ETR
+                            raw_etr = area.get("etr", "Unavailable")
+                            etr_found = raw_etr.get("val", "Unavailable") if isinstance(raw_etr, dict) else str(raw_etr)
+                            if not etr_found or etr_found.lower() == "none": etr_found = "Unavailable"
                             break
                             
                 # --- PARSER 2: Pacific Power / PacifiCorp Maps ---
                 elif "zips" in report_data:
                     for z in report_data.get("zips", []):
                         if str(z.get("zipCode", "")) == zip_c:
-                            # Combine Planned and Unplanned customer outages
                             affected = int(z.get("custOutPlan", 0)) + int(z.get("custOutUnplan", 0))
+                            
+                            # Attempt to extract ETR
+                            raw_etr = z.get("etr", z.get("estimatedTimeOfRestoration", "Unavailable"))
+                            etr_found = raw_etr.get("val", "Unavailable") if isinstance(raw_etr, dict) else str(raw_etr)
+                            if not etr_found or etr_found.lower() == "none": etr_found = "Unavailable"
                             break
 
                 state["customers_affected"] = affected
+                state["etr"] = etr_found
 
                 if affected > 0:
                     if not state["is_outage"]:
@@ -248,15 +258,18 @@ def poll_gp_outages():
                     
                     elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                     if elapsed >= thresh and not state["alert_sent"]:
-                        # Triggers image download & pushes to phone
-                        send_pushover(title=f"🚨 {company} Outage Alert", message=f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}", include_map=True)
+                        msg = f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}\nEst. Restoration: {etr_found}"
+                        send_pushover(title=f"🚨 {company} Outage Alert", message=msg, include_map=True)
                         state["alert_sent"] = True
                 else:
                     if state["is_outage"]:
-                        send_pushover(title=f"✅ {company} Power Restored", message=f"Restored in {zip_c}!", priority=0)
+                        elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
+                        msg = f"Restored in {zip_c}!\nOutage lasted {int(elapsed)} mins."
+                        send_pushover(title=f"✅ {company} Power Restored", message=msg, priority=0)
                     state["is_outage"] = False
                     state["outage_start_time"] = None
                     state["alert_sent"] = False
+                    state["etr"] = "Unavailable"
             except Exception as e:
                 state["error_msg"] = str(e)
                 logging.error(f"API Error: {e}")
