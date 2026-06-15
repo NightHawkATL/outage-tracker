@@ -12,6 +12,8 @@ Because third-party platforms update and change endpoints occasionally, I design
 3. Refresh the page. In the Network filter box, type config.json.
 4. Right-click the file that appears (it will look something like config.json or data_configs.json), copy the URL, and paste it into the KUBRA_CONFIG_URL variable in your docker-compose.yml.
 
+SCREENSHOT GOES HERE
+
 How to Deploy via Dockhand
 
 1. Create a folder on your VPS.
