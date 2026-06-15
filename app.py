@@ -5,7 +5,7 @@ import threading
 import requests
 import logging
 from datetime import datetime
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -33,7 +33,7 @@ state = {
     
     # NUT Data
     "nut_enabled": bool(NUT_HOST),
-    "ups_data": {}, # Will dynamically hold { "nutdev1": {...}, "nutdev2": {...} }
+    "ups_data": {},
     "nut_last_check": None,
     "nut_error": None
 }
@@ -41,22 +41,38 @@ state = {
 def send_pushover(title, message, priority=1):
     if not PUSHOVER_USER or not PUSHOVER_TOKEN:
         logging.warning("Pushover keys not set. Skipping notification.")
-        return
+        return False
     try:
-        requests.post("https://api.pushover.net/1/messages.json", data={
+        resp = requests.post("https://api.pushover.net/1/messages.json", data={
             "token": PUSHOVER_TOKEN,
             "user": PUSHOVER_USER,
             "title": title,
             "message": message,
             "priority": priority
         })
+        resp.raise_for_status()
         logging.info(f"Pushover alert sent: {title}")
+        return True
     except Exception as e:
         logging.error(f"Failed to send Pushover alert: {e}")
+        return False
+
+# --- API Endpoints ---
+@app.route("/test-pushover", methods=["POST"])
+def test_pushover():
+    """Triggered by the web UI to test Pushover integration."""
+    success = send_pushover(
+        title="🔔 Pushover Test",
+        message="This is a test notification from your Power Tracker dashboard! Your integration is working perfectly.",
+        priority=0 # Priority 0 so it doesn't bypass quiet hours for a simple test
+    )
+    if success:
+        return jsonify({"status": "success", "message": "Test sent! Check your device."})
+    else:
+        return jsonify({"status": "error", "message": "Failed to send alert. Check your API keys and logs."}), 500
 
 # --- NUT Integration ---
 def fetch_nut_data():
-    """Connects to NUT and fetches data for ALL configured UPSs."""
     results = {}
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -64,8 +80,6 @@ def fetch_nut_data():
             s.connect((NUT_HOST, NUT_PORT))
             
             ups_list = []
-            
-            # AUTO-DISCOVERY: Fetch all UPS names dynamically
             if NUT_UPS_NAMES.lower() == "auto":
                 s.sendall(b"LIST UPS\n")
                 data = b""
@@ -78,10 +92,8 @@ def fetch_nut_data():
                     if line.startswith('UPS '):
                         ups_list.append(line.split(' ')[1])
             else:
-                # Use manually provided comma-separated list
                 ups_list = [x.strip() for x in NUT_UPS_NAMES.split(',')]
 
-            # Fetch variables for each UPS we found
             for ups_name in ups_list:
                 s.sendall(f"LIST VAR {ups_name}\n".encode('ascii'))
                 data = b""
@@ -113,8 +125,6 @@ def poll_nut():
         
         if multi_ups_data is not None:
             state["nut_error"] = None
-            
-            # Update state for each UPS
             for ups_name, vars_dict in multi_ups_data.items():
                 if ups_name not in state["ups_data"]:
                     state["ups_data"][ups_name] = {"alert_sent": False}
@@ -122,11 +132,9 @@ def poll_nut():
                 ups_state = state["ups_data"][ups_name]
                 ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
                 ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
-                
                 runtime_sec = int(float(vars_dict.get("battery.runtime", 0)))
                 ups_state["runtime_mins"] = runtime_sec // 60
                 
-                # Independent Alerting Logic per UPS
                 if "OB" in ups_state["status"]:
                     if ups_state["runtime_mins"] <= UPS_MIN_RUNTIME_MINUTES and not ups_state["alert_sent"]:
                         send_pushover(
