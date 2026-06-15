@@ -19,7 +19,7 @@ KUBRA_THEMATIC_URL = os.getenv("KUBRA_THEMATIC_URL")
 
 NUT_HOST = os.getenv("NUT_HOST")
 NUT_PORT = int(os.getenv("NUT_PORT", "3493"))
-NUT_UPS_NAME = os.getenv("NUT_UPS_NAME", "auto")
+NUT_UPS_NAMES = os.getenv("NUT_UPS_NAMES", "auto")
 UPS_MIN_RUNTIME_MINUTES = int(os.getenv("UPS_MIN_RUNTIME_MINUTES", "10"))
 
 # In-memory State
@@ -33,12 +33,9 @@ state = {
     
     # NUT Data
     "nut_enabled": bool(NUT_HOST),
-    "ups_status": "UNKNOWN",
-    "ups_charge": 0,
-    "ups_runtime_mins": 0,
+    "ups_data": {}, # Will dynamically hold { "nutdev1": {...}, "nutdev2": {...} }
     "nut_last_check": None,
-    "nut_error": None,
-    "nut_alert_sent": False
+    "nut_error": None
 }
 
 def send_pushover(title, message, priority=1):
@@ -58,55 +55,51 @@ def send_pushover(title, message, priority=1):
         logging.error(f"Failed to send Pushover alert: {e}")
 
 # --- NUT Integration ---
-def fetch_nut_vars():
-    global NUT_UPS_NAME
-    vars_dict = {}
+def fetch_nut_data():
+    """Connects to NUT and fetches data for ALL configured UPSs."""
+    results = {}
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(5)
+            s.settimeout(10)
             s.connect((NUT_HOST, NUT_PORT))
             
-            # AUTO-DISCOVERY: If name is 'auto', ask the server for its UPS list
-            if NUT_UPS_NAME.lower() == "auto":
+            ups_list = []
+            
+            # AUTO-DISCOVERY: Fetch all UPS names dynamically
+            if NUT_UPS_NAMES.lower() == "auto":
                 s.sendall(b"LIST UPS\n")
-                ups_data = b""
-                while True:
+                data = b""
+                while b"END LIST UPS" not in data:
                     chunk = s.recv(4096)
                     if not chunk: break
-                    ups_data += chunk
-                    if b"END LIST UPS" in ups_data:
-                        break
+                    data += chunk
                 
-                # Parse the response (Format: UPS <upsname> "<description>")
-                for line in ups_data.decode('ascii').split('\n'):
+                for line in data.decode('ascii').split('\n'):
                     if line.startswith('UPS '):
-                        NUT_UPS_NAME = line.split(' ')[1]
-                        logging.info(f"Auto-discovered NUT UPS name: {NUT_UPS_NAME}")
-                        break
-                        
-                if NUT_UPS_NAME.lower() == "auto":
-                    raise ValueError("Could not automatically discover UPS name from server.")
+                        ups_list.append(line.split(' ')[1])
+            else:
+                # Use manually provided comma-separated list
+                ups_list = [x.strip() for x in NUT_UPS_NAMES.split(',')]
 
-            # Fetch variables for the specific UPS
-            s.sendall(f"LIST VAR {NUT_UPS_NAME}\n".encode('ascii'))
-            
-            data = b""
-            while True:
-                chunk = s.recv(4096)
-                if not chunk: break
-                data += chunk
-                if b"END LIST VAR" in data:
-                    break
-        
-        # Parse the variable data
-        for line in data.decode('ascii').split('\n'):
-            if line.startswith('VAR'):
-                parts = line.strip().split(' ', 3)
-                if len(parts) == 4:
-                    v_name = parts[2]
-                    v_val = parts[3].strip('"')
-                    vars_dict[v_name] = v_val
-        return vars_dict
+            # Fetch variables for each UPS we found
+            for ups_name in ups_list:
+                s.sendall(f"LIST VAR {ups_name}\n".encode('ascii'))
+                data = b""
+                while b"END LIST VAR" not in data:
+                    chunk = s.recv(4096)
+                    if not chunk: break
+                    data += chunk
+                
+                vars_dict = {}
+                for line in data.decode('ascii').split('\n'):
+                    if line.startswith('VAR'):
+                        parts = line.strip().split(' ', 3)
+                        if len(parts) == 4:
+                            vars_dict[parts[2]] = parts[3].strip('"')
+                
+                results[ups_name] = vars_dict
+                
+        return results
     except Exception as e:
         logging.error(f"NUT Socket Error: {e}")
         return None
@@ -115,34 +108,43 @@ def poll_nut():
     if not NUT_HOST:
         return
     while True:
-        data = fetch_nut_vars()
+        multi_ups_data = fetch_nut_data()
         state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
         
-        if data:
+        if multi_ups_data is not None:
             state["nut_error"] = None
-            state["ups_status"] = data.get("ups.status", "UNKNOWN")
-            state["ups_charge"] = int(float(data.get("battery.charge", 0)))
-            runtime_sec = int(float(data.get("battery.runtime", 0)))
-            state["ups_runtime_mins"] = runtime_sec // 60
             
-            if "OB" in state["ups_status"]:
-                if state["ups_runtime_mins"] <= UPS_MIN_RUNTIME_MINUTES and not state["nut_alert_sent"]:
-                    send_pushover(
-                        title="CRITICAL: UPS Battery Low!",
-                        message=f"Your local UPS is on battery with {state['ups_runtime_mins']} mins remaining.",
-                        priority=1
-                    )
-                    state["nut_alert_sent"] = True
-            elif "OL" in state["ups_status"]:
-                if state["nut_alert_sent"]:
-                    send_pushover(
-                        title="UPS Power Restored",
-                        message="Your home UPS is back on grid power.",
-                        priority=0
-                    )
-                state["nut_alert_sent"] = False
+            # Update state for each UPS
+            for ups_name, vars_dict in multi_ups_data.items():
+                if ups_name not in state["ups_data"]:
+                    state["ups_data"][ups_name] = {"alert_sent": False}
+                
+                ups_state = state["ups_data"][ups_name]
+                ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
+                ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
+                
+                runtime_sec = int(float(vars_dict.get("battery.runtime", 0)))
+                ups_state["runtime_mins"] = runtime_sec // 60
+                
+                # Independent Alerting Logic per UPS
+                if "OB" in ups_state["status"]:
+                    if ups_state["runtime_mins"] <= UPS_MIN_RUNTIME_MINUTES and not ups_state["alert_sent"]:
+                        send_pushover(
+                            title=f"⚠️ CRITICAL: {ups_name} Battery Low!",
+                            message=f"Your local UPS '{ups_name}' is on battery with only {ups_state['runtime_mins']} mins remaining.",
+                            priority=1
+                        )
+                        ups_state["alert_sent"] = True
+                elif "OL" in ups_state["status"]:
+                    if ups_state["alert_sent"]:
+                        send_pushover(
+                            title=f"🔌 UPS {ups_name} Restored",
+                            message=f"UPS '{ups_name}' is back on grid power.",
+                            priority=0
+                        )
+                    ups_state["alert_sent"] = False
         else:
-            state["nut_error"] = f"Failed to fetch data from {NUT_HOST}:{NUT_PORT}"
+            state["nut_error"] = f"Failed to connect to {NUT_HOST}:{NUT_PORT}"
             
         time.sleep(30)
 
@@ -162,7 +164,6 @@ def poll_gp_outages():
             affected_in_zip = 0
             
             areas = report_data.get("areas", [])
-            
             for area in areas:
                 area_name = str(area.get("name", area.get("id", "")))
                 if ZIP_CODE in area_name:
@@ -184,7 +185,7 @@ def poll_gp_outages():
                 elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                 if elapsed >= THRESHOLD_MINUTES and not state["alert_sent"]:
                     send_pushover(
-                        title="GP Outage Threshold Reached",
+                        title="🚨 GP Outage Threshold Reached",
                         message=f"Power out in {ZIP_CODE} for >{THRESHOLD_MINUTES} mins.\nCustomers Affected: {affected_in_zip}"
                     )
                     state["alert_sent"] = True
@@ -192,7 +193,7 @@ def poll_gp_outages():
                 if state["is_outage"]:
                     elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                     send_pushover(
-                        title="GP Area Power Restored",
+                        title="✅ GP Area Power Restored",
                         message=f"Power in {ZIP_CODE} restored. Outage lasted {int(elapsed)} mins.",
                         priority=0
                     )
@@ -212,7 +213,14 @@ def index():
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
     
-    return render_template("index.html", state=state, zip=ZIP_CODE, threshold=THRESHOLD_MINUTES, duration=duration)
+    return render_template(
+        "index.html", 
+        state=state, 
+        zip=ZIP_CODE, 
+        threshold=THRESHOLD_MINUTES, 
+        duration=duration,
+        config_min_runtime=UPS_MIN_RUNTIME_MINUTES
+    )
 
 if __name__ == "__main__":
     threading.Thread(target=poll_gp_outages, daemon=True).start()
