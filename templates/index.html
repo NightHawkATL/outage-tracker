@@ -44,6 +44,8 @@
                     {% elif state.is_outage %}
                         <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
                         <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
+                        <!-- NEW: Estimated Restoration Display -->
+                        <p class="mb-1">Est. Restoration: <strong>{{ state.etr }}</strong></p>
                         <p>Duration: <strong>{{ duration }} minutes</strong></p>
                         {% if state.alert_sent %}
                             <span class="badge bg-danger p-2">Area Alert Sent</span>
