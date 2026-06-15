@@ -12,6 +12,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 CONFIG_FILE = "data/config.json"
+os.makedirs("static", exist_ok=True) # Ensure static folder exists for map images
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -19,22 +20,17 @@ def load_config():
             cfg = json.load(f)
             cfg.setdefault("map_url", "")
             cfg.setdefault("report_url", "")
+            cfg.setdefault("mapbox_token", "")
+            cfg.setdefault("latitude", "")
+            cfg.setdefault("longitude", "")
             return cfg
     
-    # Clean slate defaults for new installs
     config = {
-        "company_name": os.getenv("COMPANY_NAME", ""),
-        "zip_code": os.getenv("ZIP_CODE", ""),
-        "threshold_mins": int(os.getenv("THRESHOLD_MINUTES", "45")),
-        "kubra_url": os.getenv("KUBRA_THEMATIC_URL", ""),
-        "map_url": "",
-        "report_url": "",
-        "nut_host": os.getenv("NUT_HOST", ""),
-        "nut_port": int(os.getenv("NUT_PORT", "3493")),
-        "nut_ups_names": os.getenv("NUT_UPS_NAMES", "auto"),
-        "ups_min_runtime": int(os.getenv("UPS_MIN_RUNTIME_MINUTES", "10")),
-        "pushover_user": os.getenv("PUSHOVER_USER_KEY", ""),
-        "pushover_token": os.getenv("PUSHOVER_API_TOKEN", "")
+        "company_name": "", "zip_code": "", "threshold_mins": 45,
+        "kubra_url": "", "map_url": "", "report_url": "",
+        "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
+        "pushover_user": "", "pushover_token": "",
+        "mapbox_token": "", "latitude": "", "longitude": ""
     }
     save_config(config)
     return config
@@ -46,30 +42,51 @@ def save_config(config):
 
 app_config = load_config()
 
-# In-memory State
 state = {
-    "is_outage": False,
-    "customers_affected": 0,
-    "outage_start_time": None,
-    "alert_sent": False,
-    "last_check": None,
-    "error_msg": None,
-    
-    "nut_enabled": bool(app_config.get("nut_host")),
-    "ups_data": {},
-    "nut_last_check": None,
-    "nut_error": None
+    "is_outage": False, "customers_affected": 0, "outage_start_time": None,
+    "alert_sent": False, "last_check": None, "error_msg": None,
+    "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None
 }
 
-def send_pushover(title, message, priority=1):
+def update_outage_map():
+    """Generates a static map image from Mapbox and saves it locally."""
+    token = app_config.get("mapbox_token")
+    lat = app_config.get("latitude")
+    lon = app_config.get("longitude")
+    
+    if not token or not lat or not lon:
+        return None
+        
+    # Uses a dark map style with a red lightning bolt pin at your coordinates
+    url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l-bolt+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        filepath = "static/outage_map.jpg"
+        with open(filepath, 'wb') as f:
+            f.write(resp.content)
+        return filepath
+    except Exception as e:
+        logging.error(f"Mapbox Generation Error: {e}")
+        return None
+
+def send_pushover(title, message, priority=1, include_map=False):
     user = app_config.get("pushover_user")
     token = app_config.get("pushover_token")
     if not user or not token:
         return False
+        
+    data = {"token": token, "user": user, "title": title, "message": message, "priority": priority}
+    image_path = update_outage_map() if include_map else None
+
     try:
-        resp = requests.post("https://api.pushover.net/1/messages.json", data={
-            "token": token, "user": user, "title": title, "message": message, "priority": priority
-        })
+        if image_path and os.path.exists(image_path):
+            with open(image_path, "rb") as img:
+                files = {"attachment": ("map.jpg", img, "image/jpeg")}
+                resp = requests.post("https://api.pushover.net/1/messages.json", data=data, files=files)
+        else:
+            resp = requests.post("https://api.pushover.net/1/messages.json", data=data)
+            
         resp.raise_for_status()
         return True
     except Exception as e:
@@ -100,6 +117,9 @@ def config_page():
             "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
             "pushover_user": request.form.get("pushover_user", "").strip(),
             "pushover_token": request.form.get("pushover_token", "").strip(),
+            "mapbox_token": request.form.get("mapbox_token", "").strip(),
+            "latitude": request.form.get("latitude", "").strip(),
+            "longitude": request.form.get("longitude", "").strip(),
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config["nut_host"])
@@ -111,7 +131,7 @@ def config_page():
 
 @app.route("/test-pushover", methods=["POST"])
 def test_pushover():
-    if send_pushover("🔔 Pushover Test", "Your configuration is working perfectly.", priority=0):
+    if send_pushover("🔔 Pushover Test", "Configuration working perfectly. Here is your map!", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
 
@@ -124,7 +144,6 @@ def fetch_nut_data():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(10)
             s.connect((host, port))
-            
             ups_list = []
             if names.lower() == "auto":
                 s.sendall(b"LIST UPS\n")
@@ -134,8 +153,7 @@ def fetch_nut_data():
                     if not chunk: break
                     data += chunk
                 for line in data.decode('ascii').split('\n'):
-                    if line.startswith('UPS '):
-                        ups_list.append(line.split(' ')[1])
+                    if line.startswith('UPS '): ups_list.append(line.split(' ')[1])
             else:
                 ups_list = [x.strip() for x in names.split(',')]
 
@@ -150,12 +168,10 @@ def fetch_nut_data():
                 for line in data.decode('ascii').split('\n'):
                     if line.startswith('VAR'):
                         parts = line.strip().split(' ', 3)
-                        if len(parts) == 4:
-                            vars_dict[parts[2]] = parts[3].strip('"')
+                        if len(parts) == 4: vars_dict[parts[2]] = parts[3].strip('"')
                 results[ups_name] = vars_dict
         return results
-    except:
-        return None
+    except: return None
 
 def poll_nut():
     while True:
@@ -163,13 +179,11 @@ def poll_nut():
         if current_host:
             multi_ups_data = fetch_nut_data()
             state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
-            
             if multi_ups_data is not None:
                 state["nut_error"] = None
                 for ups_name, vars_dict in multi_ups_data.items():
                     if ups_name not in state["ups_data"]:
                         state["ups_data"][ups_name] = {"alert_sent": False}
-                    
                     ups_state = state["ups_data"][ups_name]
                     ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
                     ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
@@ -185,7 +199,6 @@ def poll_nut():
                         ups_state["alert_sent"] = False
             else:
                 state["nut_error"] = f"Failed to connect to NUT Server"
-        
         for _ in range(30):
             if app_config.get("nut_host") != current_host: break
             time.sleep(1)
@@ -202,7 +215,6 @@ def poll_gp_outages():
                 req = requests.get(url, timeout=10)
                 req.raise_for_status()
                 report_data = req.json()
-                
                 state["last_check"] = datetime.now().strftime("%I:%M %p")
                 state["error_msg"] = None
                 affected = 0
@@ -224,7 +236,8 @@ def poll_gp_outages():
                     
                     elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                     if elapsed >= thresh and not state["alert_sent"]:
-                        send_pushover(title=f"🚨 {company} Outage Alert", message=f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}")
+                        # Triggers image download & pushes to phone
+                        send_pushover(title=f"🚨 {company} Outage Alert", message=f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}", include_map=True)
                         state["alert_sent"] = True
                 else:
                     if state["is_outage"]:
@@ -232,7 +245,6 @@ def poll_gp_outages():
                     state["is_outage"] = False
                     state["outage_start_time"] = None
                     state["alert_sent"] = False
-
             except Exception as e:
                 state["error_msg"] = str(e)
                 logging.error(f"API Error: {e}")
