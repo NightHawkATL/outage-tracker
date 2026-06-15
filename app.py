@@ -17,18 +17,18 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             cfg = json.load(f)
-            # Add defaults for the new map/report URL fields if upgrading old config
-            cfg.setdefault("map_url", "https://outagemap.georgiapower.com/")
-            cfg.setdefault("report_url", "https://www.georgiapower.com/outage")
+            cfg.setdefault("map_url", "")
+            cfg.setdefault("report_url", "")
             return cfg
     
+    # Clean slate defaults for new installs
     config = {
-        "company_name": "Georgia Power",
-        "zip_code": os.getenv("ZIP_CODE", "30008"),
+        "company_name": os.getenv("COMPANY_NAME", ""),
+        "zip_code": os.getenv("ZIP_CODE", ""),
         "threshold_mins": int(os.getenv("THRESHOLD_MINUTES", "45")),
         "kubra_url": os.getenv("KUBRA_THEMATIC_URL", ""),
-        "map_url": "https://outagemap.georgiapower.com/",
-        "report_url": "https://www.georgiapower.com/outage",
+        "map_url": "",
+        "report_url": "",
         "nut_host": os.getenv("NUT_HOST", ""),
         "nut_port": int(os.getenv("NUT_PORT", "3493")),
         "nut_ups_names": os.getenv("NUT_UPS_NAMES", "auto"),
@@ -88,12 +88,12 @@ def config_page():
     global app_config
     if request.method == "POST":
         app_config.update({
-            "company_name": request.form.get("company_name"),
-            "zip_code": request.form.get("zip_code"),
+            "company_name": request.form.get("company_name", "").strip(),
+            "zip_code": request.form.get("zip_code", "").strip(),
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
-            "kubra_url": request.form.get("kubra_url"),
-            "map_url": request.form.get("map_url", ""),
-            "report_url": request.form.get("report_url", ""),
+            "kubra_url": request.form.get("kubra_url", "").strip(),
+            "map_url": request.form.get("map_url", "").strip(),
+            "report_url": request.form.get("report_url", "").strip(),
             "nut_host": request.form.get("nut_host", "").strip(),
             "nut_port": int(request.form.get("nut_port", 3493)),
             "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(),
@@ -186,7 +186,6 @@ def poll_nut():
             else:
                 state["nut_error"] = f"Failed to connect to NUT Server"
         
-        # Smart Wait: Sleep 30s, but break instantly if config is changed
         for _ in range(30):
             if app_config.get("nut_host") != current_host: break
             time.sleep(1)
@@ -196,9 +195,9 @@ def poll_gp_outages():
         url = app_config.get("kubra_url")
         zip_c = app_config.get("zip_code")
         thresh = app_config.get("threshold_mins")
-        company = app_config.get("company_name")
+        company = app_config.get("company_name", "Utility")
 
-        if url:
+        if url and zip_c:
             try:
                 req = requests.get(url, timeout=10)
                 req.raise_for_status()
@@ -238,7 +237,6 @@ def poll_gp_outages():
                 state["error_msg"] = str(e)
                 logging.error(f"API Error: {e}")
 
-        # Smart Wait: Sleep 5 mins, but break instantly if config URL is updated
         for _ in range(300): 
             if app_config.get("kubra_url") != url: break
             time.sleep(1)
