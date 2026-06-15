@@ -7,7 +7,7 @@ Verifying the KUBRA Config URL (Important Step)
 
 Because third-party platforms update and change endpoints occasionally, I designed the script to read the "static" configuration file rather than the dynamic data files (which change folders every 10 minutes). The default URL I provided in the compose file should work out of the box, but if it doesn't, here is how you verify it:
 
-    Open your browser and go to the Georgia Power Outage Map.
+    Open your browser and go to the [Georgia Power Outage Map](https://outagemap.georgiapower.com).
 
     Press F12 to open Developer Tools and go to the Network tab.
 
