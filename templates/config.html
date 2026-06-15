@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Configuration</title>
-    <!-- NEW: Favicon Link -->
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -15,7 +14,6 @@
 <body>
     <div class="container" style="max-width: 800px;">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <!-- NEW: SVG Logo in Header -->
             <h2 class="mb-0 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
                 Tracker Configuration
@@ -33,10 +31,10 @@
                         <input list="company_list" name="company_name" class="form-control bg-dark text-white border-secondary" value="{{ config.company_name }}" placeholder="Select or type custom name..." required>
                         <datalist id="company_list">
                             <option value="Georgia Power">
-                            <option value="Alabama Power">
-                            <option value="Mississippi Power">
+                            <option value="Pacific Power">
                             <option value="Duke Energy">
                             <option value="FirstEnergy">
+                            <option value="Alabama Power">
                             <option value="National Grid">
                             <option value="Entergy">
                             <option value="ComEd">
@@ -48,8 +46,8 @@
                         <input type="text" name="zip_code" class="form-control bg-dark text-white border-secondary" value="{{ config.zip_code }}" required>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">KUBRA Thematic URL (from Browser DevTools)</label>
-                        <input type="url" name="kubra_url" class="form-control bg-dark text-white border-secondary" value="{{ config.kubra_url }}" placeholder="https://kubra.io/data/...">
+                        <label class="form-label">Outage API JSON URL (From Browser DevTools)</label>
+                        <input type="url" name="kubra_url" class="form-control bg-dark text-white border-secondary" value="{{ config.kubra_url }}" placeholder="https://...">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Map Website URL (For Banner)</label>
