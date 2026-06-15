@@ -10,32 +10,35 @@
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); height: 100%; }
         .status-ok { color: #4caf50; font-weight: bold; }
         .status-outage { color: #f44336; font-weight: bold; }
-        
-        .map-banner { transition: transform 0.2s; position: relative; }
-        .map-banner:hover { transform: scale(1.02); }
-        .map-banner img { width: 100%; height: 100%; object-fit: cover; opacity: 0.4; transition: opacity 0.2s; }
-        .map-banner:hover img { opacity: 0.6; }
     </style>
     <meta http-equiv="refresh" content="30">
 </head>
 <body>
     <div class="container" style="max-width: 1000px;">
-        <h2 class="text-center mb-4">⚡ Power Tracking Dashboard</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">⚡ Power Tracking Dashboard</h2>
+            <a href="/config" class="btn btn-outline-light">⚙️ Settings</a>
+        </div>
         
-        <div class="row g-4">
-            <!-- Georgia Power Card -->
-            <div class="col-md-6">
+        <div class="row g-4 justify-content-center">
+            
+            <!-- Grid adjustments based on whether NUT is enabled -->
+            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
                 <div class="card p-4 text-center">
-                    <h5 class="text-muted">GP Area Outages (Zip: <strong>{{ zip }}</strong>)</h5>
+                    <h5 class="text-info">{{ config.company_name }} Area (Zip: <strong>{{ config.zip_code }}</strong>)</h5>
                     <hr>
-                    {% if state.is_outage %}
+                    
+                    {% if not config.kubra_url %}
+                        <h4 class="text-warning mt-4">Awaiting Configuration</h4>
+                        <p class="text-muted">Click settings to enter your URL.</p>
+                    {% elif state.is_outage %}
                         <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
                         <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
                         <p>Duration: <strong>{{ duration }} minutes</strong></p>
                         {% if state.alert_sent %}
                             <span class="badge bg-danger p-2">Area Alert Sent</span>
                         {% else %}
-                            <span class="badge bg-warning text-dark p-2">Area Alert in {{ threshold - duration }} mins</span>
+                            <span class="badge bg-warning text-dark p-2">Alert triggers at {{ config.threshold_mins }} mins</span>
                         {% endif %}
                     {% else %}
                         <h2 class="status-ok mt-2">POWER ONLINE</h2>
@@ -50,7 +53,7 @@
                 </div>
             </div>
 
-            <!-- Local Multi-UPS Array Card -->
+            <!-- Local Multi-UPS Array Card (Hides if no NUT configured) -->
             {% if state.nut_enabled %}
             <div class="col-md-6">
                 <div class="card p-4">
@@ -77,46 +80,22 @@
                                     Battery: <strong>{{ ups_info.charge }}%</strong> &nbsp;|&nbsp; 
                                     Est. Runtime: <strong>{{ ups_info.runtime_mins }} mins</strong>
                                 </div>
-                                {% if ups_info.alert_sent %}
-                                    <div class="text-danger small mt-1 fw-bold">⚠️ Critical Battery Alert Sent</div>
-                                {% endif %}
                             </div>
                         {% endfor %}
                         </div>
                     {% endif %}
 
                     <div class="mt-4 text-center text-muted small">
-                        Alert triggers below {{ config_min_runtime }} mins<br>
-                        Last NUT Sync: {{ state.nut_last_check if state.nut_last_check else 'Pending...' }}<br>
-                        {% if state.nut_error %}<span class="text-danger">{{ state.nut_error }}</span>{% endif %}
+                        Alert triggers below {{ config.ups_min_runtime }} mins<br>
+                        Last NUT Sync: {{ state.nut_last_check if state.nut_last_check else 'Pending...' }}
                     </div>
                 </div>
             </div>
             {% endif %}
         </div>
 
-        <!-- Clickable Map Image Banner -->
-        <div class="mt-4">
-            <a href="https://outagemap.georgiapower.com/" target="_blank" class="text-decoration-none">
-                <div class="card bg-dark text-white overflow-hidden map-banner" style="height: 120px;">
-                    <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=80" alt="Map Graphic">
-                    <div class="card-img-overlay d-flex align-items-center justify-content-center">
-                        <h3 class="fw-bold mb-0 text-white" style="text-shadow: 2px 2px 6px #000; letter-spacing: 1px;">
-                            🗺️ View Live Georgia Power Map
-                        </h3>
-                    </div>
-                </div>
-            </a>
-        </div>
-
-        <!-- Actions Row -->
-        <div class="row mt-3 g-3">
-            <div class="col-md-6">
-                <a href="https://www.georgiapower.com/outage" target="_blank" class="btn btn-primary w-100 p-3 fw-bold">
-                    📢 Report an Outage
-                </a>
-            </div>
-            <div class="col-md-6">
+        <div class="row mt-4 g-3 {% if not state.nut_enabled %}justify-content-center{% endif %}">
+            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-4{% endif %}">
                 <button onclick="testPushover()" id="pushTestBtn" class="btn btn-outline-info w-100 p-3 fw-bold">
                     🔔 Test Pushover Alert
                 </button>
@@ -124,13 +103,10 @@
         </div>
     </div>
 
-    <!-- JavaScript to handle the test button -->
     <script>
         function testPushover() {
             const btn = document.getElementById('pushTestBtn');
             const originalText = btn.innerHTML;
-            
-            // Provide UI feedback
             btn.disabled = true;
             btn.innerHTML = "⏳ Sending...";
 
@@ -140,8 +116,7 @@
                     alert(data.message);
                     btn.innerHTML = originalText;
                     btn.disabled = false;
-                })
-                .catch(error => {
+                }).catch(() => {
                     alert("Error communicating with server.");
                     btn.innerHTML = originalText;
                     btn.disabled = false;
