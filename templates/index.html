@@ -37,3 +37,132 @@
                         <h4 class="text-warning mt-4">Awaiting Configuration</h4>
                         <p class="text-muted">Click settings to enter your URL.</p>
                     {% elif state.is_outage %}
+                        <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
+                        <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
+                        <p>Duration: <strong>{{ duration }} minutes</strong></p>
+                        {% if state.alert_sent %}
+                            <span class="badge bg-danger p-2">Area Alert Sent</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark p-2">Alert triggers at {{ config.threshold_mins }} mins</span>
+                        {% endif %}
+                    {% else %}
+                        <h2 class="status-ok mt-2">POWER ONLINE</h2>
+                        <p class="lead mt-2">0 customers affected.</p>
+                        <span class="badge bg-success p-2">All Clear</span>
+                    {% endif %}
+                    
+                    <div class="mt-4 text-muted small">
+                        Last API Check: <span id="gp-check">{{ state.last_check if state.last_check else 'Pending...' }}</span><br>
+                        {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Local UPS Array Card -->
+            {% if state.nut_enabled %}
+            <div class="col-md-6">
+                <div class="card p-4">
+                    <h5 class="text-center text-muted">Local UPS Systems</h5>
+                    <hr>
+                    
+                    {% if not state.ups_data %}
+                        <h2 class="text-secondary text-center mt-4" id="nut-check">CONNECTING...</h2>
+                    {% else %}
+                        <div class="d-flex flex-column gap-3 mt-2">
+                        {% for ups_name, ups_info in state.ups_data.items() %}
+                            <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="mb-0 text-info">{{ ups_name }}</h5>
+                                    {% if "OB" in ups_info.status %}
+                                        <span class="badge bg-danger fs-6">ON BATTERY</span>
+                                    {% elif "OL" in ups_info.status %}
+                                        <span class="badge bg-success fs-6">ONLINE</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary fs-6">{{ ups_info.status }}</span>
+                                    {% endif %}
+                                </div>
+                                <div class="small">
+                                    Battery: <strong>{{ ups_info.charge }}%</strong> &nbsp;|&nbsp; 
+                                    Est. Runtime: <strong>{{ ups_info.runtime_mins }} mins</strong>
+                                </div>
+                            </div>
+                        {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <div class="mt-4 text-center text-muted small">
+                        Alert triggers below {{ config.ups_min_runtime }} mins<br>
+                        Last NUT Sync: {{ state.nut_last_check if state.nut_last_check else 'Pending...' }}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- NEW: Separated Map Banner Row -->
+        {% if config.map_url %}
+        <div class="row mt-4 justify-content-center">
+            <div class="{% if state.nut_enabled %}col-12{% else %}col-lg-8{% endif %}">
+                <a href="{{ config.map_url }}" target="_blank" class="text-decoration-none">
+                    <div class="card bg-dark text-white overflow-hidden map-banner" style="height: 120px;">
+                        <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=80" alt="Map Graphic">
+                        <div class="card-img-overlay d-flex align-items-center justify-content-center">
+                            <h3 class="fw-bold mb-0 text-white" style="text-shadow: 2px 2px 6px #000; letter-spacing: 1px;">
+                                🗺️ View Live {{ config.company_name }} Map
+                            </h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- NEW: Separated Actions Row -->
+        <div class="row mt-3 g-3 justify-content-center">
+            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-4{% endif %}">
+                <a href="{{ config.report_url }}" target="_blank" class="btn btn-primary w-100 p-3 fw-bold">
+                    📢 Report an Outage
+                </a>
+            </div>
+            
+            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-4{% endif %}">
+                <button onclick="testPushover()" id="pushTestBtn" class="btn btn-outline-info w-100 p-3 fw-bold">
+                    🔔 Test Pushover Alert
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function testPushover() {
+            const btn = document.getElementById('pushTestBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ Sending...";
+
+            fetch('/test-pushover', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }).catch(() => {
+                    alert("Error communicating with server.");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+        }
+
+        window.onload = function() {
+            let gpCheck = document.getElementById('gp-check');
+            let nutCheck = document.getElementById('nut-check');
+            
+            if ((gpCheck && gpCheck.innerText.includes("Pending")) || (nutCheck && nutCheck.innerText.includes("CONNECTING"))) {
+                setTimeout(function() {
+                    window.location.reload();
+                }, 2000);
+            }
+        };
+    </script>
+</body>
+</html>
