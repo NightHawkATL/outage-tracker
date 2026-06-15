@@ -25,7 +25,7 @@ Before building the container, ensure your project directory looks like this:
 ```text
 power-tracker/
 ├── Dockerfile
-├── docker-compose.yml
+├── compose.yaml
 ├── requirements.txt
 ├── app.py
 ├── static/
