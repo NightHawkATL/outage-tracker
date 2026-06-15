@@ -21,7 +21,6 @@
             <!-- Outage Map Settings -->
             <div class="card p-4 mb-4">
                 <h4 class="text-info mb-3">Utility Grid Settings</h4>
-                
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">Power Company Name</label>
@@ -46,8 +45,6 @@
                         <label class="form-label">KUBRA Thematic URL (from Browser DevTools)</label>
                         <input type="url" name="kubra_url" class="form-control bg-dark text-white border-secondary" value="{{ config.kubra_url }}" placeholder="https://kubra.io/data/...">
                     </div>
-                    
-                    <!-- Map and Report Links -->
                     <div class="col-md-6">
                         <label class="form-label">Map Website URL (For Banner)</label>
                         <input type="url" name="map_url" class="form-control bg-dark text-white border-secondary" value="{{ config.map_url }}">
@@ -56,7 +53,6 @@
                         <label class="form-label">Report Outage URL (For Button)</label>
                         <input type="url" name="report_url" class="form-control bg-dark text-white border-secondary" value="{{ config.report_url }}">
                     </div>
-
                     <div class="col-md-6">
                         <label class="form-label">Alert Threshold (Minutes)</label>
                         <input type="number" name="threshold_mins" class="form-control bg-dark text-white border-secondary" value="{{ config.threshold_mins }}">
@@ -68,7 +64,6 @@
             <div class="card p-4 mb-4">
                 <h4 class="text-info mb-3">Local UPS Settings (Optional)</h4>
                 <p class="small text-muted mb-3">Leave Host field blank to disable UPS tracking and widen the dashboard view.</p>
-                
                 <div class="row g-3">
                     <div class="col-md-8">
                         <label class="form-label">NUT Server Host / IP</label>
@@ -89,18 +84,36 @@
                 </div>
             </div>
 
+            <!-- Mapbox Image Generation -->
+            <div class="card p-4 mb-4">
+                <h4 class="text-info mb-3">Mapbox Image Alerts (Optional)</h4>
+                <p class="small text-muted mb-3">Provide a free Mapbox Public Token and your coordinates to automatically attach a map image of your neighborhood to your Pushover alerts.</p>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Mapbox Public API Token</label>
+                        <input type="text" name="mapbox_token" class="form-control bg-dark text-white border-secondary" value="{{ config.mapbox_token }}" placeholder="pk.eyJ1Ijoi...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Latitude</label>
+                        <input type="text" name="latitude" class="form-control bg-dark text-white border-secondary" value="{{ config.latitude }}" placeholder="34.1234">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Longitude</label>
+                        <input type="text" name="longitude" class="form-control bg-dark text-white border-secondary" value="{{ config.longitude }}" placeholder="-84.1234">
+                    </div>
+                </div>
+            </div>
+
             <!-- Pushover Settings -->
             <div class="card p-4 mb-4">
                 <h4 class="text-info mb-3">Pushover Notifications</h4>
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">User Key</label>
-                        <!-- Changed from password to text so browsers don't hijack it -->
                         <input type="text" name="pushover_user" class="form-control bg-dark text-white border-secondary" value="{{ config.pushover_user }}">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">API Token</label>
-                        <!-- Changed from password to text so browsers don't hijack it -->
                         <input type="text" name="pushover_token" class="form-control bg-dark text-white border-secondary" value="{{ config.pushover_token }}">
                     </div>
                 </div>
