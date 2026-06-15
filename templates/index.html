@@ -10,12 +10,11 @@
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); height: 100%; }
         .status-ok { color: #4caf50; font-weight: bold; }
         .status-outage { color: #f44336; font-weight: bold; }
-        .status-warn { color: #ffeb3b; font-weight: bold; }
     </style>
     <meta http-equiv="refresh" content="30">
 </head>
 <body>
-    <div class="container" style="max-width: 900px;">
+    <div class="container" style="max-width: 1000px;">
         <h2 class="text-center mb-4">⚡ Power Tracking Dashboard</h2>
         
         <div class="row g-4">
@@ -46,33 +45,43 @@
                 </div>
             </div>
 
-            <!-- Local UPS Card -->
+            <!-- Local Multi-UPS Array Card -->
             {% if state.nut_enabled %}
             <div class="col-md-6">
-                <div class="card p-4 text-center">
-                    <h5 class="text-muted">Local UPS Status</h5>
+                <div class="card p-4">
+                    <h5 class="text-center text-muted">Local UPS Systems</h5>
                     <hr>
                     
-                    {% if "OB" in state.ups_status %}
-                        <h2 class="status-outage mt-2">ON BATTERY</h2>
-                    {% elif "OL" in state.ups_status %}
-                        <h2 class="status-ok mt-2">ONLINE</h2>
+                    {% if not state.ups_data %}
+                        <h2 class="text-secondary text-center mt-4">CONNECTING...</h2>
                     {% else %}
-                        <h2 class="text-secondary mt-2">CONNECTING...</h2>
+                        <div class="d-flex flex-column gap-3 mt-2">
+                        {% for ups_name, ups_info in state.ups_data.items() %}
+                            <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h5 class="mb-0 text-info">{{ ups_name }}</h5>
+                                    {% if "OB" in ups_info.status %}
+                                        <span class="badge bg-danger fs-6">ON BATTERY</span>
+                                    {% elif "OL" in ups_info.status %}
+                                        <span class="badge bg-success fs-6">ONLINE</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary fs-6">{{ ups_info.status }}</span>
+                                    {% endif %}
+                                </div>
+                                <div class="small">
+                                    Battery: <strong>{{ ups_info.charge }}%</strong> &nbsp;|&nbsp; 
+                                    Est. Runtime: <strong>{{ ups_info.runtime_mins }} mins</strong>
+                                </div>
+                                {% if ups_info.alert_sent %}
+                                    <div class="text-danger small mt-1 fw-bold">⚠️ Critical Battery Alert Sent</div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                        </div>
                     {% endif %}
 
-                    <p class="lead mt-2">Battery Charge: <strong>{{ state.ups_charge }}%</strong></p>
-                    <p>Est. Runtime: <strong>{{ state.ups_runtime_mins }} minutes</strong></p>
-                    
-                    {% if state.nut_alert_sent %}
-                        <span class="badge bg-danger p-2">Critical UPS Alert Sent!</span>
-                    {% elif "OB" in state.ups_status %}
-                        <span class="badge bg-warning text-dark p-2">Alert triggers below {{ config_min_runtime }} mins</span>
-                    {% else %}
-                        <span class="badge bg-success p-2">Battery Healthy</span>
-                    {% endif %}
-
-                    <div class="mt-4 text-muted small">
+                    <div class="mt-4 text-center text-muted small">
+                        Alert triggers below {{ config_min_runtime }} mins<br>
                         Last NUT Sync: {{ state.nut_last_check if state.nut_last_check else 'Pending...' }}<br>
                         {% if state.nut_error %}<span class="text-danger">{{ state.nut_error }}</span>{% endif %}
                     </div>
@@ -82,7 +91,7 @@
         </div>
 
         <div class="mt-4">
-            <a href="https://www.georgiapower.com/outage" target="_blank" class="btn btn-primary w-100 p-3">
+            <a href="https://www.georgiapower.com/outage" target="_blank" class="btn btn-primary w-100 p-3 fw-bold">
                 📢 Report an Outage to Georgia Power
             </a>
         </div>
