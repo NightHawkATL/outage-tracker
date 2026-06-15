@@ -7,9 +7,15 @@ services:
       - "8080:8080"
     environment:
       - TZ=America/New_York
-      - ZIP_CODE=30008  # Replace with your Zip Code
-      - THRESHOLD_MINUTES=45 # How long the outage must last before Pushover alerts you
+      # --- Georgia Power Settings ---
+      - ZIP_CODE=30008
+      - THRESHOLD_MINUTES=45 
+      - KUBRA_CONFIG_URL=https://outagemap.georgiapower.com/resources/data/external/datapoint_generation/config/config.json
+      # --- Pushover Settings ---
       - PUSHOVER_USER_KEY=your_user_key_here
       - PUSHOVER_API_TOKEN=your_api_token_here
-      # The static KUBRA config URL (See instructions below on how to get this)
-      - KUBRA_CONFIG_URL=https://outagemap.georgiapower.com/resources/data/external/datapoint_generation/config/config.json
+      # --- NUT Server Settings ---
+      - NUT_HOST=100.x.x.x # The Tailscale/VPN IP of your home NUT server
+      - NUT_PORT=3493
+      - NUT_UPS_NAME=ups # The name of your UPS in nut.conf
+      - UPS_MIN_RUNTIME_MINUTES=10 # Fire critical alert if battery drops below this
