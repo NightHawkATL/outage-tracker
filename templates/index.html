@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Georgia Power Outage Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; margin-top: 50px; }
+        .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .status-ok { color: #4caf50; font-weight: bold; }
+        .status-outage { color: #f44336; font-weight: bold; }
+    </style>
+    <!-- Auto-refresh page every 60 seconds -->
+    <meta http-equiv="refresh" content="60">
+</head>
+<body>
+    <div class="container max-w-md" style="max-width: 600px;">
+        <h2 class="text-center mb-4">⚡ GP Outage Tracker</h2>
+        
+        <div class="card p-4 text-center">
+            <h4 class="text-muted">Tracking Zip Code: <strong>{{ zip }}</strong></h4>
+            <hr>
+            
+            {% if state.is_outage %}
+                <h1 class="status-outage mt-3">OUTAGE ACTIVE</h1>
+                <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
+                <p>Outage Duration: <strong>{{ duration }} minutes</strong></p>
+                
+                {% if state.alert_sent %}
+                    <span class="badge bg-danger p-2 mt-2">Pushover Alert Sent</span>
+                {% else %}
+                    <span class="badge bg-warning text-dark p-2 mt-2">Alert Pending (Triggers at {{ threshold }} mins)</span>
+                {% endif %}
+            {% else %}
+                <h1 class="status-ok mt-3">POWER ONLINE</h1>
+                <p class="lead mt-2">0 customers affected.</p>
+                <span class="badge bg-success p-2 mt-2">All Clear</span>
+            {% endif %}
+
+            <div class="mt-4 text-muted small">
+                Last API Check: {{ state.last_check if state.last_check else 'Pending...' }}<br>
+                {% if state.error_msg %}
+                    <span class="text-danger">Error: {{ state.error_msg }}</span>
+                {% endif %}
+            </div>
+            
+            <hr>
+            <!-- Georgia Power Outage Reporting Links -->
+            <a href="https://www.georgiapower.com/outage" target="_blank" class="btn btn-primary w-100 mt-2">
+                📢 Report Outage to Georgia Power
+            </a>
+        </div>
+    </div>
+</body>
+</html>
