@@ -16,14 +16,19 @@ CONFIG_FILE = "data/config.json"
 def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+            cfg = json.load(f)
+            # Add defaults for the new map/report URL fields if upgrading old config
+            cfg.setdefault("map_url", "https://outagemap.georgiapower.com/")
+            cfg.setdefault("report_url", "https://www.georgiapower.com/outage")
+            return cfg
     
-    # Fallback/Initial Migration from old ENV vars
     config = {
         "company_name": "Georgia Power",
         "zip_code": os.getenv("ZIP_CODE", "30008"),
         "threshold_mins": int(os.getenv("THRESHOLD_MINUTES", "45")),
         "kubra_url": os.getenv("KUBRA_THEMATIC_URL", ""),
+        "map_url": "https://outagemap.georgiapower.com/",
+        "report_url": "https://www.georgiapower.com/outage",
         "nut_host": os.getenv("NUT_HOST", ""),
         "nut_port": int(os.getenv("NUT_PORT", "3493")),
         "nut_ups_names": os.getenv("NUT_UPS_NAMES", "auto"),
@@ -50,8 +55,7 @@ state = {
     "last_check": None,
     "error_msg": None,
     
-    # NUT Data
-    "nut_enabled": bool(app_config["nut_host"]),
+    "nut_enabled": bool(app_config.get("nut_host")),
     "ups_data": {},
     "nut_last_check": None,
     "nut_error": None
@@ -61,29 +65,22 @@ def send_pushover(title, message, priority=1):
     user = app_config.get("pushover_user")
     token = app_config.get("pushover_token")
     if not user or not token:
-        logging.warning("Pushover keys not set. Skipping notification.")
         return False
     try:
         resp = requests.post("https://api.pushover.net/1/messages.json", data={
-            "token": token,
-            "user": user,
-            "title": title,
-            "message": message,
-            "priority": priority
+            "token": token, "user": user, "title": title, "message": message, "priority": priority
         })
         resp.raise_for_status()
         return True
     except Exception as e:
-        logging.error(f"Failed to send Pushover alert: {e}")
+        logging.error(f"Pushover Error: {e}")
         return False
 
-# --- Web Routes ---
 @app.route("/")
 def index():
     duration = 0
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
-    
     return render_template("index.html", state=state, config=app_config, duration=duration)
 
 @app.route("/config", methods=["GET", "POST"])
@@ -95,6 +92,8 @@ def config_page():
             "zip_code": request.form.get("zip_code"),
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
             "kubra_url": request.form.get("kubra_url"),
+            "map_url": request.form.get("map_url", ""),
+            "report_url": request.form.get("report_url", ""),
             "nut_host": request.form.get("nut_host", "").strip(),
             "nut_port": int(request.form.get("nut_port", 3493)),
             "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(),
@@ -104,24 +103,18 @@ def config_page():
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config["nut_host"])
-        
-        # Reset current outage states to prevent false alerts on location change
         state["is_outage"] = False
         state["outage_start_time"] = None
         state["alert_sent"] = False
-        
         return redirect(url_for('index'))
-        
     return render_template("config.html", config=app_config)
 
 @app.route("/test-pushover", methods=["POST"])
 def test_pushover():
-    success = send_pushover("🔔 Pushover Test", "Your configuration is working perfectly.", priority=0)
-    if success:
+    if send_pushover("🔔 Pushover Test", "Your configuration is working perfectly.", priority=0):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
 
-# --- Polling Threads ---
 def fetch_nut_data():
     host = app_config.get("nut_host")
     port = app_config.get("nut_port", 3493)
@@ -153,7 +146,6 @@ def fetch_nut_data():
                     chunk = s.recv(4096)
                     if not chunk: break
                     data += chunk
-                
                 vars_dict = {}
                 for line in data.decode('ascii').split('\n'):
                     if line.startswith('VAR'):
@@ -162,12 +154,13 @@ def fetch_nut_data():
                             vars_dict[parts[2]] = parts[3].strip('"')
                 results[ups_name] = vars_dict
         return results
-    except Exception as e:
+    except:
         return None
 
 def poll_nut():
     while True:
-        if app_config.get("nut_host"):
+        current_host = app_config.get("nut_host")
+        if current_host:
             multi_ups_data = fetch_nut_data()
             state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
             
@@ -184,11 +177,7 @@ def poll_nut():
                     
                     if "OB" in ups_state["status"]:
                         if ups_state["runtime_mins"] <= app_config["ups_min_runtime"] and not ups_state["alert_sent"]:
-                            send_pushover(
-                                title=f"⚠️ CRITICAL: {ups_name} Low!",
-                                message=f"UPS '{ups_name}' on battery, {ups_state['runtime_mins']} mins left.",
-                                priority=1
-                            )
+                            send_pushover(title=f"⚠️ CRITICAL: {ups_name} Low!", message=f"UPS '{ups_name}' on battery, {ups_state['runtime_mins']} mins left.", priority=1)
                             ups_state["alert_sent"] = True
                     elif "OL" in ups_state["status"]:
                         if ups_state["alert_sent"]:
@@ -197,8 +186,10 @@ def poll_nut():
             else:
                 state["nut_error"] = f"Failed to connect to NUT Server"
         
-        # Sleep in short chunks so config changes apply faster
-        for _ in range(30): time.sleep(1)
+        # Smart Wait: Sleep 30s, but break instantly if config is changed
+        for _ in range(30):
+            if app_config.get("nut_host") != current_host: break
+            time.sleep(1)
 
 def poll_gp_outages():
     while True:
@@ -234,14 +225,10 @@ def poll_gp_outages():
                     
                     elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                     if elapsed >= thresh and not state["alert_sent"]:
-                        send_pushover(
-                            title=f"🚨 {company} Outage Alert",
-                            message=f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}"
-                        )
+                        send_pushover(title=f"🚨 {company} Outage Alert", message=f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}")
                         state["alert_sent"] = True
                 else:
                     if state["is_outage"]:
-                        elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                         send_pushover(title=f"✅ {company} Power Restored", message=f"Restored in {zip_c}!", priority=0)
                     state["is_outage"] = False
                     state["outage_start_time"] = None
@@ -249,9 +236,12 @@ def poll_gp_outages():
 
             except Exception as e:
                 state["error_msg"] = str(e)
-                logging.error(f"Error fetching provider data: {e}")
+                logging.error(f"API Error: {e}")
 
-        for _ in range(300): time.sleep(1)
+        # Smart Wait: Sleep 5 mins, but break instantly if config URL is updated
+        for _ in range(300): 
+            if app_config.get("kubra_url") != url: break
+            time.sleep(1)
 
 if __name__ == "__main__":
     threading.Thread(target=poll_gp_outages, daemon=True).start()
