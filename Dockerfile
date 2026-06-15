@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY app.py .
 COPY templates/ templates/
+COPY static/ static/
 
 # Expose the web UI port
 EXPOSE 8080
