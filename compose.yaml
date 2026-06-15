@@ -1,21 +1,11 @@
 services:
-  gp-outage-tracker:
+  outage-tracker:
     build: .
-    container_name: gp-outage-tracker
+    container_name: outage-tracker
     restart: unless-stopped
     ports:
       - "8585:8080"
+    volumes:
+      - /mnt/Apps/Storage/outage-tracker:/app/data  # This saves your UI settings permanently
     environment:
       - TZ=${TZ}
-      # --- Georgia Power Settings ---
-      - ZIP_CODE=${ZIP_CODE}
-      - THRESHOLD_MINUTES=${THRESHOLD_MINUTES} 
-      - KUBRA_THEMATIC_URL=${KUBRA_THEMATIC_URL}
-      # --- Pushover Settings ---
-      - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY}
-      - PUSHOVER_API_TOKEN=${PUSHOVER_TOKEN}
-      # --- NUT Server Settings ---
-      - NUT_HOST=${NUT_HOST} # The Tailscale/VPN IP of your home NUT server
-      - NUT_PORT=${NUT_PORT}
-      - NUT_UPS_NAME=${NUT_UPS_NAME} # The name of your UPS in nut.conf
-      - UPS_MIN_RUNTIME_MINUTES=${UPS_MIN_RUNTIME_MINUTES} # Fire critical alert if battery drops below this
