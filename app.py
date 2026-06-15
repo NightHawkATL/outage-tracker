@@ -1,5 +1,6 @@
 import os
 import time
+import socket
 import threading
 import requests
 import logging
@@ -16,6 +17,11 @@ PUSHOVER_USER = os.getenv("PUSHOVER_USER_KEY")
 PUSHOVER_TOKEN = os.getenv("PUSHOVER_API_TOKEN")
 KUBRA_CONFIG_URL = os.getenv("KUBRA_CONFIG_URL")
 
+NUT_HOST = os.getenv("NUT_HOST")
+NUT_PORT = int(os.getenv("NUT_PORT", "3493"))
+NUT_UPS_NAME = os.getenv("NUT_UPS_NAME", "ups")
+UPS_MIN_RUNTIME_MINUTES = int(os.getenv("UPS_MIN_RUNTIME_MINUTES", "10"))
+
 # In-memory State
 state = {
     "is_outage": False,
@@ -23,10 +29,19 @@ state = {
     "outage_start_time": None,
     "alert_sent": False,
     "last_check": None,
-    "error_msg": None
+    "error_msg": None,
+    
+    # NUT Data
+    "nut_enabled": bool(NUT_HOST),
+    "ups_status": "UNKNOWN",
+    "ups_charge": 0,
+    "ups_runtime_mins": 0,
+    "nut_last_check": None,
+    "nut_error": None,
+    "nut_alert_sent": False
 }
 
-def send_pushover(title, message):
+def send_pushover(title, message, priority=1):
     if not PUSHOVER_USER or not PUSHOVER_TOKEN:
         logging.warning("Pushover keys not set. Skipping notification.")
         return
@@ -36,41 +51,101 @@ def send_pushover(title, message):
             "user": PUSHOVER_USER,
             "title": title,
             "message": message,
-            "priority": 1 # High priority
+            "priority": priority
         })
         logging.info(f"Pushover alert sent: {title}")
     except Exception as e:
         logging.error(f"Failed to send Pushover alert: {e}")
 
-def get_kubra_data():
-    """Fetches the dynamic Kubra report data based on the config interval."""
+# --- NUT Integration ---
+def fetch_nut_vars():
+    """Raw TCP Socket implementation of the NUT protocol to fetch variables."""
+    vars_dict = {}
     try:
-        # 1. Fetch the static config to find the current dynamic directory
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5) # Don't hang if server is down
+            s.connect((NUT_HOST, NUT_PORT))
+            s.sendall(f"LIST VAR {NUT_UPS_NAME}\n".encode('ascii'))
+            
+            data = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk: break
+                data += chunk
+                if b"END LIST VAR" in data:
+                    break
+        
+        # Parse the NUT response
+        for line in data.decode('ascii').split('\n'):
+            if line.startswith('VAR'):
+                parts = line.strip().split(' ', 3)
+                if len(parts) == 4:
+                    v_name = parts[2]
+                    v_val = parts[3].strip('"')
+                    vars_dict[v_name] = v_val
+        return vars_dict
+    except Exception as e:
+        logging.error(f"NUT Connection Error: {e}")
+        return None
+
+def poll_nut():
+    if not NUT_HOST:
+        return
+    while True:
+        data = fetch_nut_vars()
+        state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
+        
+        if data:
+            state["nut_error"] = None
+            state["ups_status"] = data.get("ups.status", "UNKNOWN")
+            state["ups_charge"] = int(float(data.get("battery.charge", 0)))
+            
+            # Runtime is provided by NUT in seconds
+            runtime_sec = int(float(data.get("battery.runtime", 0)))
+            state["ups_runtime_mins"] = runtime_sec // 60
+            
+            # Critical Alert Logic: UPS is On Battery (OB) and runtime is dropping
+            if "OB" in state["ups_status"]:
+                if state["ups_runtime_mins"] <= UPS_MIN_RUNTIME_MINUTES and not state["nut_alert_sent"]:
+                    send_pushover(
+                        title="⚠️ CRITICAL: UPS Battery Low!",
+                        message=f"Your local UPS is on battery with only {state['ups_runtime_mins']} mins remaining! Shutting down soon.",
+                        priority=1
+                    )
+                    state["nut_alert_sent"] = True
+            elif "OL" in state["ups_status"]: # On Line Power
+                if state["nut_alert_sent"]:
+                    send_pushover(
+                        title="🔌 UPS Power Restored",
+                        message="Your home UPS is back on grid power.",
+                        priority=0
+                    )
+                state["nut_alert_sent"] = False
+        else:
+            state["nut_error"] = f"Failed to connect to {NUT_HOST}:{NUT_PORT}"
+            
+        time.sleep(30) # Poll UPS every 30 seconds
+
+# --- Georgia Power Integration ---
+def get_kubra_data():
+    try:
         config_req = requests.get(KUBRA_CONFIG_URL, timeout=10)
         config_req.raise_for_status()
-        config_data = config_req.json()
-        
-        # KUBRA configs usually store the current data path under 'directory'
-        current_dir = config_data.get('directory') 
+        current_dir = config_req.json().get('directory') 
         if not current_dir:
             raise ValueError("Could not find 'directory' in KUBRA config.")
 
-        # 2. Construct the URL for the zip code report
-        # The base URL is derived from the config URL
         base_url = KUBRA_CONFIG_URL.split('/resources/')[0]
         zip_report_url = f"{base_url}/resources/data/external/datapoint_generation/{current_dir}/outages/report_zip.json"
 
-        # 3. Fetch the Zip Code Report
         report_req = requests.get(zip_report_url, timeout=10)
         report_req.raise_for_status()
         return report_req.json()
-
     except Exception as e:
         state["error_msg"] = str(e)
-        logging.error(f"Error fetching KUBRA data: {e}")
         return None
 
-def check_outages():
+def poll_gp_outages():
     while True:
         report_data = get_kubra_data()
         state["last_check"] = datetime.now().strftime("%I:%M %p")
@@ -79,8 +154,6 @@ def check_outages():
             state["error_msg"] = None
             affected_in_zip = 0
             
-            # Search for our Zip Code in the report payload
-            # Usually stored in report_data['file_data']
             file_data = report_data.get('file_data', [])
             for region in file_data:
                 if ZIP_CODE in str(region.get('name', '')):
@@ -91,38 +164,33 @@ def check_outages():
 
             if affected_in_zip > 0:
                 if not state["is_outage"]:
-                    # New Outage Detected
                     state["is_outage"] = True
                     state["outage_start_time"] = datetime.now()
                     state["alert_sent"] = False
-                    logging.info(f"Outage detected in {ZIP_CODE}. Affected: {affected_in_zip}")
                 
-                # Check if threshold is met
                 elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                 if elapsed >= THRESHOLD_MINUTES and not state["alert_sent"]:
                     send_pushover(
-                        title="🚨 Georgia Power Outage Alert",
-                        message=f"Power has been out in {ZIP_CODE} for >{THRESHOLD_MINUTES} mins.\nCustomers Affected: {affected_in_zip}"
+                        title="🚨 GP Outage Threshold Reached",
+                        message=f"Power out in {ZIP_CODE} for >{THRESHOLD_MINUTES} mins.\nCustomers Affected: {affected_in_zip}"
                     )
                     state["alert_sent"] = True
             else:
-                # Power is on / restored
                 if state["is_outage"]:
                     elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                     send_pushover(
-                        title="✅ Power Restored",
-                        message=f"Power in {ZIP_CODE} has been restored! Outage lasted {int(elapsed)} mins."
+                        title="✅ GP Area Power Restored",
+                        message=f"Power in {ZIP_CODE} restored! Outage lasted {int(elapsed)} mins.",
+                        priority=0
                     )
                 state["is_outage"] = False
                 state["outage_start_time"] = None
                 state["alert_sent"] = False
 
-        # Wait 5 minutes before polling again
-        time.sleep(300)
+        time.sleep(300) # Poll GP every 5 mins
 
 @app.route("/")
 def index():
-    # Calculate duration if active
     duration = 0
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
@@ -130,7 +198,9 @@ def index():
     return render_template("index.html", state=state, zip=ZIP_CODE, threshold=THRESHOLD_MINUTES, duration=duration)
 
 if __name__ == "__main__":
-    # Start background polling daemon
-    threading.Thread(target=check_outages, daemon=True).start()
+    # Start background polling daemons
+    threading.Thread(target=poll_gp_outages, daemon=True).start()
+    threading.Thread(target=poll_nut, daemon=True).start()
+    
     # Start web server
     app.run(host="0.0.0.0", port=8080)
