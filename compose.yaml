@@ -1,0 +1,15 @@
+services:
+  gp-outage-tracker:
+    build: .
+    container_name: gp-outage-tracker
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=America/New_York
+      - ZIP_CODE=30008  # Replace with your Zip Code
+      - THRESHOLD_MINUTES=45 # How long the outage must last before Pushover alerts you
+      - PUSHOVER_USER_KEY=your_user_key_here
+      - PUSHOVER_API_TOKEN=your_api_token_here
+      # The static KUBRA config URL (See instructions below on how to get this)
+      - KUBRA_CONFIG_URL=https://outagemap.georgiapower.com/resources/data/external/datapoint_generation/config/config.json
