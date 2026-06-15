@@ -10,8 +10,29 @@ Instead of waiting for your servers to lose power to know there's an outage, thi
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
 * **Smart Alerting:** Configurable delay thresholds so you only get alerted if the neighborhood outage lasts longer than your UPS can handle.
 * **Instant Critical Alerts:** If a local UPS goes on battery (`OB`) and drops below your minimum safe runtime, it fires an immediate critical alert.
+* **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
 * **100% Web UI Driven:** No `.env` files to manage. Update your tracked zip code, API keys, and map URLs directly from the Web UI.
 * **Dynamic Dashboard:** A responsive, dark-mode Bootstrap dashboard. If you don't use a UPS or don't want a map banner, those elements gracefully auto-hide and center the remaining data.
+
+---
+
+## 📂 Folder Structure
+
+Before building the container, ensure your project directory looks like this:
+
+```text
+power-tracker/
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── app.py
+├── static/
+│   ├── favicon.ico    <-- Your browser tab icon
+│   └── logo.svg       <-- Your custom header logo
+└── templates/
+    ├── config.html
+    └── index.html
+```
 
 ---
 
@@ -26,7 +47,7 @@ version: '3.8'
 
 services:
   power-tracker:
-    image: your-repo/power-tracker:latest # Replace with your build details
+    image: your-repo/power-tracker:latest
     build: .
     container_name: power-tracker
     restart: unless-stopped
@@ -67,12 +88,18 @@ If you run a local NUT server, enter its IP and Port.
 * Set **UPS Names** to `auto` to automatically fetch every UPS attached to the server, or list them manually (e.g., `nutdev1,nutdev2`).
 * If you leave the NUT Host field blank, the UPS tracking panel will hide itself and the Grid tracking panel will expand to fill the screen.
 
-### 3. Pushover Integration
+### 3. Mapbox Image Alerts (Optional)
+To receive rich map images of your neighborhood attached to your Pushover alerts:
+* Create a free account at [Mapbox](https://www.mapbox.com/).
+* Copy your **Default Public Token** (`pk.eyJ1...`).
+* Enter the Token, plus your exact home **Latitude** and **Longitude** in the Web UI.
+
+### 4. Pushover Integration
 Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token.
 * **User Key:** Found on your main Pushover dashboard.
 * **API Token:** Found under your specific Application's settings.
 
-Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct!
+Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
 
 ---
 
