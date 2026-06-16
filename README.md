@@ -2,13 +2,21 @@
 
 Outage Tracker is a lightweight, self-hosted Docker application designed to monitor both your local home rack's battery health and your neighborhood's power grid simultaneously. 
 
-Instead of waiting for your servers to lose power to know there's an outage, this app queries your utility company's API to track grid failures in your specific Zip Code, while independently polling your Network UPS Tools (NUT) server to monitor your local battery runtime. If either drops below your configured thresholds, it sends a high-priority push notification to your phone via Pushover.
+While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a mesh VPN to monitor your local battery runtime. 
 
 Main Dashboard:</br>
 <img width="990" height="885" alt="image" src="https://github.com/user-attachments/assets/b2d57886-44b8-4760-97f1-985ec3f39133" />
 
 History Logs:</br>
 <img width="999" height="246" alt="image" src="https://github.com/user-attachments/assets/bbeba38d-3f12-4a2e-920f-cc980e43faab" />
+
+## 🤔 Why dual-tracking? (Grid vs. UPS)
+
+If you already have a UPS, why do you need to poll the power company?
+
+1. **The "Dead Internet" Problem:** If your neighborhood loses power, the coax/fiber node down the street might lose power too. Even if your servers and router are on a UPS, your home internet drops. A local NUT server can't send you an email/push notification without internet. Because Outage Tracker runs on a remote VPS, it will see the utility company report the outage and alert you, even if your house is completely offline.
+2. **The "Neighborhood" View:** The Utility API tells you what is happening in your Zip Code. You can get alerted about a major outage hitting your neighborhood while you are at work, before you even get home.
+3. **The "Local Rack" View:** Meanwhile, the NUT integration tells you exactly what is happening to your physical hardware. If the power drops, Outage Tracker monitors the exact battery percentage and runtime of your UPS array, sending critical alerts when your servers are about to die.
 
 ## ✨ Features
 
@@ -30,7 +38,7 @@ Before building the container, ensure your project directory looks like this:
 ```text
 outage-tracker/
 ├── Dockerfile
-├── docker-compose.yml
+├── compose.yaml
 ├── requirements.txt
 ├── app.py
 ├── static/
