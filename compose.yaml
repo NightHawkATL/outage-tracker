@@ -6,6 +6,6 @@ services:
     ports:
       - "8585:8080"
     volumes:
-      - /mnt/Apps/Storage/outage-tracker:/app/data  # This saves your UI settings permanently
+      - /mnt/Apps/Storage/outage-tracker:/app/data
     environment:
-      - TZ=${TZ}
+      - TZ=America/New_York
