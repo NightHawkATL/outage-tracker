@@ -96,6 +96,7 @@ To track your local power grid, you need to provide the direct JSON data URL fro
 If you run a local NUT server, enter its IP and Port. 
 * Set **UPS Names** to `auto` to automatically fetch every UPS attached to the server, or list them manually (e.g., `nutdev1,nutdev2`).
 * If you leave the NUT Host field blank, the UPS tracking panel will hide itself and the Grid tracking panel will expand to fill the screen.
+* If you host this on a VPS, you will have to connect a VPN tunnel between the two to connect NUT locally to the VPS. I use Tailscale and it works great!
 
 ### 3. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
