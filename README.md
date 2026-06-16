@@ -44,7 +44,7 @@ outage-tracker/
 
 Deploy via Docker Compose. The application uses a single persistent volume to save your settings and history logs from the Web UI.
 
-### `docker-compose.yml`
+### `compose.yaml`
 
 ```yaml
 services:
