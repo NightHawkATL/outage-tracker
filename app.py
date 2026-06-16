@@ -122,14 +122,13 @@ def config_page():
     global app_config
     if request.method == "POST":
         
-        # Helper function for "Write-Only" secure fields
         def get_secure(field_name):
             val = request.form.get(field_name, "").strip()
             if not val: 
-                return app_config.get(field_name, "") # Keep existing if blank
+                return app_config.get(field_name, "")
             if val.lower() == "clear": 
-                return "" # Delete the key if user typed "clear"
-            return val # Save new key
+                return ""
+            return val
 
         app_config.update({
             "company_name": request.form.get("company_name", "").strip(),
@@ -283,3 +282,56 @@ def poll_gp_outages():
                 elif "zips" in report_data:
                     for z in report_data.get("zips", []):
                         if str(z.get("zipCode", "")) == zip_c:
+                            affected = int(z.get("custOutPlan", 0)) + int(z.get("custOutUnplan", 0))
+                            raw_etr = z.get("etr", z.get("estimatedTimeOfRestoration", "Unavailable"))
+                            etr_found = raw_etr.get("val", "Unavailable") if isinstance(raw_etr, dict) else str(raw_etr)
+                            if not etr_found or etr_found.lower() == "none": etr_found = "Unavailable"
+                            break
+
+                state["customers_affected"] = affected
+                state["etr"] = etr_found
+
+                if affected > 0:
+                    if not state["is_outage"]:
+                        state["is_outage"] = True
+                        state["outage_start_time"] = datetime.now()
+                        state["outage_max_affected"] = affected
+                        state["alert_sent"] = False
+                    else:
+                        if affected > state["outage_max_affected"]:
+                            state["outage_max_affected"] = affected
+                    
+                    elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
+                    if elapsed >= thresh and not state["alert_sent"]:
+                        msg = f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}\nEst. Restoration: {etr_found}"
+                        send_pushover(title=f"🚨 {company} Outage Alert", message=msg, include_map=True)
+                        state["alert_sent"] = True
+                else:
+                    if state["is_outage"]:
+                        elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
+                        hist = load_history()
+                        hist["grid"].append({
+                            "company": company, "zip": zip_c, "start": state["outage_start_time"].strftime("%Y-%m-%d %I:%M %p"),
+                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed), "max_affected": state["outage_max_affected"]
+                        })
+                        save_history(hist)
+
+                        msg = f"Restored in {zip_c}!\nOutage lasted {int(elapsed)} mins."
+                        send_pushover(title=f"✅ {company} Power Restored", message=msg, priority=0)
+                        
+                    state["is_outage"] = False
+                    state["outage_start_time"] = None
+                    state["alert_sent"] = False
+                    state["etr"] = "Unavailable"
+            except Exception as e:
+                state["error_msg"] = str(e)
+                logging.error(f"API Error: {e}")
+
+        for _ in range(300): 
+            if app_config.get("kubra_url") != url: break
+            time.sleep(1)
+
+if __name__ == "__main__":
+    threading.Thread(target=poll_gp_outages, daemon=True).start()
+    threading.Thread(target=poll_nut, daemon=True).start()
+    app.run(host="0.0.0.0", port=8080)
