@@ -18,7 +18,10 @@
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
                 Tracker Configuration
             </h2>
-            <a href="/" class="btn btn-outline-secondary">Cancel</a>
+            <div>
+                <a href="/" class="btn btn-outline-light me-2">🏠 Dashboard</a>
+                <a href="/history" class="btn btn-outline-info">📜 History</a>
+            </div>
         </div>
 
         <form method="POST" action="/config">
