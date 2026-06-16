@@ -48,7 +48,6 @@ def load_history():
     return {"grid": [], "ups": []}
 
 def save_history(history):
-    # Keep only the most recent 50 events for each to prevent infinite file growth
     history["grid"] = history["grid"][-50:]
     history["ups"] = history["ups"][-50:]
     with open(HISTORY_FILE, 'w') as f:
@@ -56,7 +55,6 @@ def save_history(history):
 
 app_config = load_config()
 
-# In-memory State
 state = {
     "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
@@ -69,7 +67,6 @@ def update_outage_map():
     lon = app_config.get("longitude")
     
     if not token or not lat or not lon:
-        logging.warning("Mapbox credentials or coordinates are missing. Skipping map.")
         return None
         
     url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
@@ -116,7 +113,6 @@ def index():
 @app.route("/history")
 def history_page():
     history_data = load_history()
-    # Reverse lists to show newest first on the webpage
     history_data["grid"] = history_data["grid"][::-1]
     history_data["ups"] = history_data["ups"][::-1]
     return render_template("history.html", state=state, config=app_config, history=history_data)
@@ -125,6 +121,16 @@ def history_page():
 def config_page():
     global app_config
     if request.method == "POST":
+        
+        # Helper function for "Write-Only" secure fields
+        def get_secure(field_name):
+            val = request.form.get(field_name, "").strip()
+            if not val: 
+                return app_config.get(field_name, "") # Keep existing if blank
+            if val.lower() == "clear": 
+                return "" # Delete the key if user typed "clear"
+            return val # Save new key
+
         app_config.update({
             "company_name": request.form.get("company_name", "").strip(),
             "zip_code": request.form.get("zip_code", "").strip(),
@@ -136,11 +142,11 @@ def config_page():
             "nut_port": int(request.form.get("nut_port", 3493)),
             "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(),
             "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
-            "pushover_user": request.form.get("pushover_user", "").strip(),
-            "pushover_token": request.form.get("pushover_token", "").strip(),
-            "mapbox_token": request.form.get("mapbox_token", "").strip(),
-            "latitude": request.form.get("latitude", "").strip(),
-            "longitude": request.form.get("longitude", "").strip(),
+            "latitude": get_secure("latitude"),
+            "longitude": get_secure("longitude"),
+            "mapbox_token": get_secure("mapbox_token"),
+            "pushover_user": get_secure("pushover_user"),
+            "pushover_token": get_secure("pushover_token"),
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config["nut_host"])
@@ -213,13 +219,11 @@ def poll_nut():
                     ups_state["runtime_mins"] = int(float(vars_dict.get("battery.runtime", 0))) // 60
                     
                     if "OB" in ups_state["status"]:
-                        # Record start of OB event
                         if not ups_state["is_ob"]:
                             ups_state["is_ob"] = True
                             ups_state["ob_start_time"] = datetime.now()
                             ups_state["min_charge"] = ups_state["charge"]
                         else:
-                            # Update minimum charge reached during this event
                             if ups_state["charge"] < ups_state["min_charge"]:
                                 ups_state["min_charge"] = ups_state["charge"]
 
@@ -228,20 +232,14 @@ def poll_nut():
                             ups_state["alert_sent"] = True
 
                     elif "OL" in ups_state["status"]:
-                        # If recovering from an OB event, log it to history
                         if ups_state["is_ob"] and ups_state["ob_start_time"]:
                             elapsed = (datetime.now() - ups_state["ob_start_time"]).total_seconds() / 60
-                            
                             hist = load_history()
                             hist["ups"].append({
-                                "ups_name": ups_name,
-                                "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
-                                "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-                                "duration_mins": int(elapsed),
-                                "min_charge": ups_state["min_charge"]
+                                "ups_name": ups_name, "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
+                                "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed), "min_charge": ups_state["min_charge"]
                             })
                             save_history(hist)
-
                             ups_state["is_ob"] = False
                             ups_state["ob_start_time"] = None
                             
@@ -285,62 +283,3 @@ def poll_gp_outages():
                 elif "zips" in report_data:
                     for z in report_data.get("zips", []):
                         if str(z.get("zipCode", "")) == zip_c:
-                            affected = int(z.get("custOutPlan", 0)) + int(z.get("custOutUnplan", 0))
-                            raw_etr = z.get("etr", z.get("estimatedTimeOfRestoration", "Unavailable"))
-                            etr_found = raw_etr.get("val", "Unavailable") if isinstance(raw_etr, dict) else str(raw_etr)
-                            if not etr_found or etr_found.lower() == "none": etr_found = "Unavailable"
-                            break
-
-                state["customers_affected"] = affected
-                state["etr"] = etr_found
-
-                if affected > 0:
-                    if not state["is_outage"]:
-                        state["is_outage"] = True
-                        state["outage_start_time"] = datetime.now()
-                        state["outage_max_affected"] = affected
-                        state["alert_sent"] = False
-                    else:
-                        if affected > state["outage_max_affected"]:
-                            state["outage_max_affected"] = affected
-                    
-                    elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
-                    if elapsed >= thresh and not state["alert_sent"]:
-                        msg = f"Power out in {zip_c} for >{thresh} mins.\nAffected: {affected}\nEst. Restoration: {etr_found}"
-                        send_pushover(title=f"🚨 {company} Outage Alert", message=msg, include_map=True)
-                        state["alert_sent"] = True
-                else:
-                    if state["is_outage"]:
-                        elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
-                        
-                        # Save the event to History
-                        hist = load_history()
-                        hist["grid"].append({
-                            "company": company,
-                            "zip": zip_c,
-                            "start": state["outage_start_time"].strftime("%Y-%m-%d %I:%M %p"),
-                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-                            "duration_mins": int(elapsed),
-                            "max_affected": state["outage_max_affected"]
-                        })
-                        save_history(hist)
-
-                        msg = f"Restored in {zip_c}!\nOutage lasted {int(elapsed)} mins."
-                        send_pushover(title=f"✅ {company} Power Restored", message=msg, priority=0)
-                        
-                    state["is_outage"] = False
-                    state["outage_start_time"] = None
-                    state["alert_sent"] = False
-                    state["etr"] = "Unavailable"
-            except Exception as e:
-                state["error_msg"] = str(e)
-                logging.error(f"API Error: {e}")
-
-        for _ in range(300): 
-            if app_config.get("kubra_url") != url: break
-            time.sleep(1)
-
-if __name__ == "__main__":
-    threading.Thread(target=poll_gp_outages, daemon=True).start()
-    threading.Thread(target=poll_nut, daemon=True).start()
-    app.run(host="0.0.0.0", port=8080)
