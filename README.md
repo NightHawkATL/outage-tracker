@@ -1,6 +1,6 @@
 # ⚡ Outage Tracker
 
-Power Tracker is a lightweight, self-hosted Docker application designed to monitor both your local home rack's battery health and your neighborhood's power grid simultaneously. 
+Outage Tracker is a lightweight, self-hosted Docker application designed to monitor both your local home rack's battery health and your neighborhood's power grid simultaneously. 
 
 Instead of waiting for your servers to lose power to know there's an outage, this app queries your utility company's API to track grid failures in your specific Zip Code, while independently polling your Network UPS Tools (NUT) server to monitor your local battery runtime. If either drops below your configured thresholds, it sends a high-priority push notification to your phone via Pushover.
 
@@ -8,12 +8,13 @@ Instead of waiting for your servers to lose power to know there's an outage, thi
 
 ## ✨ Features
 
-* **Grid Monitoring (KUBRA API):** Natively supports tracking any major utility company that uses the KUBRA Storm Center platform (Georgia Power, Duke Energy, Alabama Power, FirstEnergy, Entergy, and many more).
+* **Grid Monitoring (KUBRA API):** Natively supports tracking any major utility company that uses the KUBRA Storm Center platform (Georgia Power, Duke Energy, Alabama Power, FirstEnergy, Entergy) as well as Pacific Power.
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
+* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage and UPS battery event so you can review your power stability over time.
 * **Smart Alerting:** Configurable delay thresholds so you only get alerted if the neighborhood outage lasts longer than your UPS can handle.
 * **Instant Critical Alerts:** If a local UPS goes on battery (`OB`) and drops below your minimum safe runtime, it fires an immediate critical alert.
 * **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
-* **100% Web UI Driven:** No `.env` files to manage. Update your tracked zip code, API keys, and map URLs directly from the Web UI.
+* **Web UI Configured:** Update your tracked zip code, API keys, and map URLs directly from the Web UI dashboard without having to rewrite config files.
 * **Dynamic Dashboard:** A responsive, dark-mode Bootstrap dashboard. If you don't use a UPS or don't want a map banner, those elements gracefully auto-hide and center the remaining data.
 
 ---
@@ -23,9 +24,9 @@ Instead of waiting for your servers to lose power to know there's an outage, thi
 Before building the container, ensure your project directory looks like this:
 
 ```text
-power-tracker/
+outage-tracker/
 ├── Dockerfile
-├── compose.yaml
+├── docker-compose.yml
 ├── requirements.txt
 ├── app.py
 ├── static/
@@ -33,6 +34,7 @@ power-tracker/
 │   └── logo.svg       <-- Your custom header logo
 └── templates/
     ├── config.html
+    ├── history.html
     └── index.html
 ```
 
@@ -40,13 +42,13 @@ power-tracker/
 
 ## 🚀 Installation
 
-Deploy via Docker Compose. The application uses a single persistent volume to save your settings from the Web UI.
+Deploy via Docker Compose. The application uses a single persistent volume to save your settings and history logs from the Web UI.
 
 ### `docker-compose.yml`
 
 ```yaml
 services:
-  power-tracker:
+  outage-tracker:
     build: .
     container_name: outage-tracker
     restart: unless-stopped
@@ -55,7 +57,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - TZ=America/New_York
+      - TZ=America/New_York # Change this to your local timezone
 ```
 
 Start the container:
@@ -73,13 +75,13 @@ On your first boot, the app will load as a "Blank Slate". Click the **⚙️ Set
 <img width="2174" height="1480" alt="config" src="https://github.com/user-attachments/assets/896439d8-345c-4a41-ba71-bb22a0a7ec93" />
 
 ### 1. Utility Grid Settings
-To track your local power grid, you need to provide the direct JSON data URL from your utility company's map. KUBRA maps are dynamic, but finding the Zip Code endpoint is easy:
+To track your local power grid, you need to provide the direct JSON data URL from your utility company's map. Finding your Zip Code endpoint is easy:
 
 1. Open your power company's outage map in your desktop browser.
 2. Press **F12** to open Developer Tools and navigate to the **Network** tab.
 3. In the Network filter box, type `json`.
 4. On the actual Map UI, find the **Map Legend / Menu** and change the view mode from "Clusters" (circles) to **"View by Zip/City"** or **"Zip Code"**.
-5. The exact moment the map shades the zip codes, a new file will appear at the bottom of your Network tab (usually named `thematic_areas.json`).
+5. The exact moment the map shades the zip codes, a new file will appear at the bottom of your Network tab (usually named `thematic_areas.json` or `listCA.json`).
 6. Click that file, copy its **Request URL**, and paste it into the Web UI settings.
 
 <img width="2167" height="874" alt="Untitled-1" src="https://github.com/user-attachments/assets/bf009ac6-ee74-4ad2-a5df-2351c46a9941" />
@@ -90,7 +92,6 @@ To track your local power grid, you need to provide the direct JSON data URL fro
 If you run a local NUT server, enter its IP and Port. 
 * Set **UPS Names** to `auto` to automatically fetch every UPS attached to the server, or list them manually (e.g., `nutdev1,nutdev2`).
 * If you leave the NUT Host field blank, the UPS tracking panel will hide itself and the Grid tracking panel will expand to fill the screen.
-* If you host the app on a VPS or remote server, you will need to add a VPN connection to allow the two to communicate correctly. Make sure to use the correct VPN IP for this in the settings.
 
 ### 3. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
