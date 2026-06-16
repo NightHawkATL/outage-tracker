@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event History</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; margin-top: 30px; margin-bottom: 50px; }
+        .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .history-item { background-color: #2a2a2a; border-left: 4px solid; }
+        .border-grid { border-color: #ff9800 !important; }
+        .border-ups { border-color: #f44336 !important; }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 1000px;">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0 d-flex align-items-center">
+                <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
+                Event History Log
+            </h2>
+            <div>
+                <a href="/" class="btn btn-outline-light me-2">🏠 Dashboard</a>
+                <a href="/config" class="btn btn-outline-secondary">⚙️ Settings</a>
+            </div>
+        </div>
+        
+        <div class="row g-4 justify-content-center">
+            
+            <!-- Grid History Column -->
+            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
+                <div class="card p-4 h-100">
+                    <h5 class="text-warning text-center mb-4">⚡ Grid Outage Events</h5>
+                    {% if not history.grid %}
+                        <p class="text-center text-muted">No historical outages recorded.</p>
+                    {% else %}
+                        <div class="d-flex flex-column gap-3">
+                            {% for event in history.grid %}
+                                <div class="p-3 history-item border-grid rounded">
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="mb-1 text-white">{{ event.company }} (Zip: {{ event.zip }})</h6>
+                                        <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                    </div>
+                                    <div class="small text-muted mb-1">
+                                        Max Affected: <strong>{{ event.max_affected }}</strong>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Started: {{ event.start }}<br>
+                                        Ended: {{ event.end }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- UPS History Column -->
+            {% if state.nut_enabled %}
+            <div class="col-md-6">
+                <div class="card p-4 h-100">
+                    <h5 class="text-danger text-center mb-4">🔋 UPS "On Battery" Events</h5>
+                    {% if not history.ups %}
+                        <p class="text-center text-muted">No battery events recorded.</p>
+                    {% else %}
+                        <div class="d-flex flex-column gap-3">
+                            {% for event in history.ups %}
+                                <div class="p-3 history-item border-ups rounded">
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="mb-1 text-white">{{ event.ups_name }}</h6>
+                                        <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                    </div>
+                                    <div class="small text-muted mb-1">
+                                        Battery Lowest Point: <strong class="text-danger">{{ event.min_charge }}%</strong>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Started: {{ event.start }}<br>
+                                        Ended: {{ event.end }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</body>
+</html>
