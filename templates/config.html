@@ -91,22 +91,23 @@
                 </div>
             </div>
 
+            <p class="small text-warning text-center mb-3">🔒 For your security, saved API Keys and Coordinates are hidden from the interface. <br>Leave the fields blank to keep your current settings, or type <code>clear</code> to remove them.</p>
+
             <!-- Mapbox Image Generation -->
             <div class="card p-4 mb-4">
                 <h4 class="text-info mb-3">Mapbox Image Alerts (Optional)</h4>
-                <p class="small text-muted mb-3">Provide a free Mapbox Public Token and your coordinates to automatically attach a map image of your neighborhood to your Pushover alerts.</p>
                 <div class="row g-3">
                     <div class="col-12">
                         <label class="form-label">Mapbox Public API Token</label>
-                        <input type="text" name="mapbox_token" class="form-control bg-dark text-white border-secondary" value="{{ config.mapbox_token }}" placeholder="pk.eyJ1Ijoi...">
+                        <input type="text" name="mapbox_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.mapbox_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}pk.eyJ1Ijoi...{% endif %}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Latitude</label>
-                        <input type="text" name="latitude" class="form-control bg-dark text-white border-secondary" value="{{ config.latitude }}" placeholder="34.1234">
+                        <label class="form-label">Home Latitude</label>
+                        <input type="text" name="latitude" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.latitude %}•••••••• (Saved){% else %}34.1234{% endif %}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Longitude</label>
-                        <input type="text" name="longitude" class="form-control bg-dark text-white border-secondary" value="{{ config.longitude }}" placeholder="-84.1234">
+                        <label class="form-label">Home Longitude</label>
+                        <input type="text" name="longitude" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.longitude %}•••••••• (Saved){% else %}-84.1234{% endif %}">
                     </div>
                 </div>
             </div>
@@ -117,11 +118,11 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">User Key</label>
-                        <input type="text" name="pushover_user" class="form-control bg-dark text-white border-secondary" value="{{ config.pushover_user }}">
+                        <input type="text" name="pushover_user" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.pushover_user %}•••••••• (Saved) - Type 'clear' to remove{% else %}{% endif %}">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">API Token</label>
-                        <input type="text" name="pushover_token" class="form-control bg-dark text-white border-secondary" value="{{ config.pushover_token }}">
+                        <input type="text" name="pushover_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.pushover_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}{% endif %}">
                     </div>
                 </div>
             </div>
