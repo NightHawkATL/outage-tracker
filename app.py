@@ -12,7 +12,9 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 CONFIG_FILE = "data/config.json"
+HISTORY_FILE = "data/history.json"
 os.makedirs("static", exist_ok=True)
+os.makedirs("data", exist_ok=True)
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -36,15 +38,27 @@ def load_config():
     return config
 
 def save_config(config):
-    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, 'r') as f:
+            return json.load(f)
+    return {"grid": [], "ups": []}
+
+def save_history(history):
+    # Keep only the most recent 50 events for each to prevent infinite file growth
+    history["grid"] = history["grid"][-50:]
+    history["ups"] = history["ups"][-50:]
+    with open(HISTORY_FILE, 'w') as f:
+        json.dump(history, f, indent=4)
 
 app_config = load_config()
 
 # In-memory State
 state = {
-    "is_outage": False, "customers_affected": 0, "outage_start_time": None,
+    "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
     "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None
 }
@@ -73,8 +87,7 @@ def update_outage_map():
 def send_pushover(title, message, priority=1, include_map=False):
     user = app_config.get("pushover_user")
     token = app_config.get("pushover_token")
-    if not user or not token:
-        return False
+    if not user or not token: return False
         
     data = {"token": token, "user": user, "title": title, "message": message, "priority": priority}
     image_path = update_outage_map() if include_map else None
@@ -99,6 +112,14 @@ def index():
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
     return render_template("index.html", state=state, config=app_config, duration=duration)
+
+@app.route("/history")
+def history_page():
+    history_data = load_history()
+    # Reverse lists to show newest first on the webpage
+    history_data["grid"] = history_data["grid"][::-1]
+    history_data["ups"] = history_data["ups"][::-1]
+    return render_template("history.html", state=state, config=app_config, history=history_data)
 
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
@@ -132,7 +153,7 @@ def config_page():
 
 @app.route("/test-pushover", methods=["POST"])
 def test_pushover():
-    if send_pushover("🔔 Pushover Test", "Configuration working perfectly. Here is your map!", priority=0, include_map=True):
+    if send_pushover("🔔 Pushover Test", "Configuration working perfectly.", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
 
@@ -184,17 +205,46 @@ def poll_nut():
                 state["nut_error"] = None
                 for ups_name, vars_dict in multi_ups_data.items():
                     if ups_name not in state["ups_data"]:
-                        state["ups_data"][ups_name] = {"alert_sent": False}
+                        state["ups_data"][ups_name] = {"alert_sent": False, "is_ob": False, "ob_start_time": None, "min_charge": 100}
+                    
                     ups_state = state["ups_data"][ups_name]
                     ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
                     ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
                     ups_state["runtime_mins"] = int(float(vars_dict.get("battery.runtime", 0))) // 60
                     
                     if "OB" in ups_state["status"]:
+                        # Record start of OB event
+                        if not ups_state["is_ob"]:
+                            ups_state["is_ob"] = True
+                            ups_state["ob_start_time"] = datetime.now()
+                            ups_state["min_charge"] = ups_state["charge"]
+                        else:
+                            # Update minimum charge reached during this event
+                            if ups_state["charge"] < ups_state["min_charge"]:
+                                ups_state["min_charge"] = ups_state["charge"]
+
                         if ups_state["runtime_mins"] <= app_config["ups_min_runtime"] and not ups_state["alert_sent"]:
                             send_pushover(title=f"⚠️ CRITICAL: {ups_name} Low!", message=f"UPS '{ups_name}' on battery, {ups_state['runtime_mins']} mins left.", priority=1)
                             ups_state["alert_sent"] = True
+
                     elif "OL" in ups_state["status"]:
+                        # If recovering from an OB event, log it to history
+                        if ups_state["is_ob"] and ups_state["ob_start_time"]:
+                            elapsed = (datetime.now() - ups_state["ob_start_time"]).total_seconds() / 60
+                            
+                            hist = load_history()
+                            hist["ups"].append({
+                                "ups_name": ups_name,
+                                "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
+                                "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+                                "duration_mins": int(elapsed),
+                                "min_charge": ups_state["min_charge"]
+                            })
+                            save_history(hist)
+
+                            ups_state["is_ob"] = False
+                            ups_state["ob_start_time"] = None
+                            
                         if ups_state["alert_sent"]:
                             send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
                         ups_state["alert_sent"] = False
@@ -221,27 +271,21 @@ def poll_gp_outages():
                 affected = 0
                 etr_found = "Unavailable"
                 
-                # --- PARSER 1: KUBRA Maps ---
                 if "areas" in report_data:
                     for area in report_data.get("areas", []):
                         area_name = str(area.get("name", area.get("id", "")))
                         if zip_c in area_name:
                             cust_a = area.get("cust_a", 0)
                             affected = int(cust_a.get("val", 0)) if isinstance(cust_a, dict) else int(cust_a)
-                            
-                            # Attempt to extract ETR
                             raw_etr = area.get("etr", "Unavailable")
                             etr_found = raw_etr.get("val", "Unavailable") if isinstance(raw_etr, dict) else str(raw_etr)
                             if not etr_found or etr_found.lower() == "none": etr_found = "Unavailable"
                             break
                             
-                # --- PARSER 2: Pacific Power / PacifiCorp Maps ---
                 elif "zips" in report_data:
                     for z in report_data.get("zips", []):
                         if str(z.get("zipCode", "")) == zip_c:
                             affected = int(z.get("custOutPlan", 0)) + int(z.get("custOutUnplan", 0))
-                            
-                            # Attempt to extract ETR
                             raw_etr = z.get("etr", z.get("estimatedTimeOfRestoration", "Unavailable"))
                             etr_found = raw_etr.get("val", "Unavailable") if isinstance(raw_etr, dict) else str(raw_etr)
                             if not etr_found or etr_found.lower() == "none": etr_found = "Unavailable"
@@ -254,7 +298,11 @@ def poll_gp_outages():
                     if not state["is_outage"]:
                         state["is_outage"] = True
                         state["outage_start_time"] = datetime.now()
+                        state["outage_max_affected"] = affected
                         state["alert_sent"] = False
+                    else:
+                        if affected > state["outage_max_affected"]:
+                            state["outage_max_affected"] = affected
                     
                     elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
                     if elapsed >= thresh and not state["alert_sent"]:
@@ -264,8 +312,22 @@ def poll_gp_outages():
                 else:
                     if state["is_outage"]:
                         elapsed = (datetime.now() - state["outage_start_time"]).total_seconds() / 60
+                        
+                        # Save the event to History
+                        hist = load_history()
+                        hist["grid"].append({
+                            "company": company,
+                            "zip": zip_c,
+                            "start": state["outage_start_time"].strftime("%Y-%m-%d %I:%M %p"),
+                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+                            "duration_mins": int(elapsed),
+                            "max_affected": state["outage_max_affected"]
+                        })
+                        save_history(hist)
+
                         msg = f"Restored in {zip_c}!\nOutage lasted {int(elapsed)} mins."
                         send_pushover(title=f"✅ {company} Power Restored", message=msg, priority=0)
+                        
                     state["is_outage"] = False
                     state["outage_start_time"] = None
                     state["alert_sent"] = False
