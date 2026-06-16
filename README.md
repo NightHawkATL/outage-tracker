@@ -4,10 +4,10 @@ Outage Tracker is a lightweight, self-hosted Docker application designed to moni
 
 Instead of waiting for your servers to lose power to know there's an outage, this app queries your utility company's API to track grid failures in your specific Zip Code, while independently polling your Network UPS Tools (NUT) server to monitor your local battery runtime. If either drops below your configured thresholds, it sends a high-priority push notification to your phone via Pushover.
 
-Main Dashboard:
+Main Dashboard:</br>
 <img width="990" height="885" alt="image" src="https://github.com/user-attachments/assets/b2d57886-44b8-4760-97f1-985ec3f39133" />
 
-History Logs:
+History Logs:</br>
 <img width="999" height="246" alt="image" src="https://github.com/user-attachments/assets/bbeba38d-3f12-4a2e-920f-cc980e43faab" />
 
 ## ✨ Features
