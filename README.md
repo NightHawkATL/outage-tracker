@@ -42,8 +42,8 @@ outage-tracker/
 ├── requirements.txt
 ├── app.py
 ├── static/
-│   ├── favicon.ico    <-- Your browser tab icon
-│   └── logo.svg       <-- Your custom header logo
+│   ├── favicon.ico
+│   └── logo.svg
 └── templates/
     ├── config.html
     ├── history.html
