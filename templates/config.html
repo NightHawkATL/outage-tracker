@@ -67,6 +67,25 @@
                 </div>
             </div>
 
+            <!-- Built-In Tailscale -->
+            <div class="card p-4 mb-4 border border-secondary">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="text-info mb-0">Built-in Tailscale VPN (Optional)</h4>
+                    {% if "Connected" in ts_status %}
+                        <span class="badge bg-success p-2">{{ ts_status }}</span>
+                    {% else %}
+                        <span class="badge bg-secondary p-2">{{ ts_status }}</span>
+                    {% endif %}
+                </div>
+                <p class="small text-muted mb-3">Instead of installing a VPN on your server host, you can bridge this container directly to your home Tailscale network. Generate an Auth Key from the <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" class="text-info text-decoration-none">Tailscale Admin Console</a> and paste it below.</p>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Tailscale Auth Key</label>
+                        <input type="text" name="ts_authkey" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ts_authkey %}•••••••• (Saved) - Type 'clear' to disconnect{% else %}tskey-auth-...{% endif %}">
+                    </div>
+                </div>
+            </div>
+
             <!-- Local NUT Settings -->
             <div class="card p-4 mb-4">
                 <h4 class="text-info mb-3">Local UPS Settings (Optional)</h4>
