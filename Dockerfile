@@ -2,20 +2,21 @@ FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Install Tailscale and Python requirements
-RUN apk update && apk add tailscale
+# Install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create the secure key directory (separate from data volume)
+RUN mkdir -p /app/auth_key
+
 # Copy application files
-COPY app.py entrypoint.sh ./
+COPY app.py entrypoint.sh reset_auth.py ./
 COPY templates/ templates/
 COPY static/ static/
 
-# Make the entrypoint script executable
+# Make scripts executable
 RUN chmod +x entrypoint.sh
 
-# Expose the web UI port
 EXPOSE 8080
 
 CMD ["./entrypoint.sh"]
