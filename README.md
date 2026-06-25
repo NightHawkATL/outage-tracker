@@ -40,14 +40,17 @@ outage-tracker/
 ├── compose.yaml
 ├── requirements.txt
 ├── app.py
-├── entrypoint.sh      <-- Tailscale startup script
+├── entrypoint.sh      
+├── reset_auth.py
+├── auth_key/
 ├── static/
-│   ├── favicon.ico    <-- Your browser tab icon
-│   └── logo.svg       <-- Your custom header logo
+│   ├── favicon.ico    
+│   └── logo.svg       
 └── templates/
     ├── config.html
     ├── history.html
-    └── index.html
+    ├── index.html
+    └── login.html
 ```
 
 ---
