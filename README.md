@@ -99,7 +99,7 @@ On your first boot, the app will load as a "Blank Slate". Click the **⚙️ Set
 
 > **🔐 Forgot your password?** If you get locked out of your dashboard, SSH into your docker host and run `docker exec -it outage-tracker python reset_auth.py`. Your password will instantly reset to `admin` without deleting any of your saved utility or VPN settings!
 
-<img width="806" height="1727" alt="tracker settings" src="https://github.com/user-attachments/assets/536c0481-3317-4bf3-b87c-a1fc11ac3ba3" />
+<img width="948" height="2018" alt="tracker config3" src="https://github.com/user-attachments/assets/df532001-004e-4d92-bcc0-23fe26c6edea" />
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
