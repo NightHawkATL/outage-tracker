@@ -9,6 +9,7 @@
         body { background-color: #121212; color: #e0e0e0; margin-top: 30px; margin-bottom: 50px; }
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .form-label { font-weight: bold; color: #adb5bd; }
+        .progress { height: 8px; background-color: #333; }
     </style>
 </head>
 <body>
@@ -20,11 +21,37 @@
             </h2>
             <div>
                 <a href="/" class="btn btn-outline-light me-2">🏠 Dashboard</a>
-                <a href="/history" class="btn btn-outline-info">📜 History</a>
+                <a href="/history" class="btn btn-outline-info me-2">📜 History</a>
+                <a href="/logout" class="btn btn-outline-danger">🚪 Logout</a>
             </div>
         </div>
 
         <form method="POST" action="/config">
+            
+            <!-- Auth Settings -->
+            <div class="card p-4 mb-4 border border-info">
+                <h4 class="text-info mb-3">Admin Account</h4>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="admin_username" class="form-control bg-dark text-white border-secondary" value="{{ config.admin_username }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">New Password (Leave blank to keep)</label>
+                        <input type="password" name="admin_password" id="pwd1" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
+                        
+                        <div class="progress mt-2">
+                            <div id="pwd-strength-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" id="pwd2" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
+                        <div id="match-warning" class="text-danger small mt-1" style="display:none;">Passwords do not match!</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Outage Map Settings -->
             <div class="card p-4 mb-4">
                 <h4 class="text-info mb-3">Utility Grid Settings</h4>
@@ -155,8 +182,36 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-success w-100 p-3 fw-bold fs-5">💾 Save Configuration</button>
+            <button type="submit" id="saveBtn" class="btn btn-success w-100 p-3 fw-bold fs-5">💾 Save Configuration</button>
         </form>
     </div>
+
+    <script>
+        function checkPwd() {
+            const p1 = document.getElementById('pwd1').value;
+            const p2 = document.getElementById('pwd2').value;
+            const btn = document.getElementById('saveBtn');
+            const warn = document.getElementById('match-warning');
+            const bar = document.getElementById('pwd-strength-bar');
+
+            // Handle Matching
+            if (p1 || p2) {
+                if (p1 !== p2) { warn.style.display = 'block'; btn.disabled = true; } 
+                else { warn.style.display = 'none'; btn.disabled = false; }
+            } else { warn.style.display = 'none'; btn.disabled = false; }
+
+            // Handle Strength
+            let str = 0;
+            if (p1.length >= 8) str += 25;
+            if (p1.match(/[a-z]/) && p1.match(/[A-Z]/)) str += 25;
+            if (p1.match(/\d/)) str += 25;
+            if (p1.match(/[^a-zA-Z\d]/)) str += 25;
+
+            bar.style.width = str + '%';
+            if (str < 50) { bar.className = 'progress-bar bg-danger'; }
+            else if (str < 100) { bar.className = 'progress-bar bg-warning'; }
+            else { bar.className = 'progress-bar bg-success'; }
+        }
+    </script>
 </body>
 </html>
