@@ -7,15 +7,33 @@ import logging
 import json
 import subprocess
 from datetime import datetime
-from flask import Flask, render_template, jsonify, request, redirect, url_for
+from functools import wraps
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session
+from cryptography.fernet import Fernet
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 CONFIG_FILE = "data/config.json"
 HISTORY_FILE = "data/history.json"
+KEY_DIR = "/app/auth_key"
+KEY_FILE = os.path.join(KEY_DIR, "secret.key")
+
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
+os.makedirs(KEY_DIR, exist_ok=True)
+
+# --- Encryption Key Management ---
+if not os.path.exists(KEY_FILE):
+    with open(KEY_FILE, 'wb') as kf:
+        kf.write(Fernet.generate_key())
+
+with open(KEY_FILE, 'rb') as kf:
+    key_bytes = kf.read()
+    cipher_suite = Fernet(key_bytes)
+
+# Secure the Flask session using our generated key
+app.secret_key = key_bytes
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -27,9 +45,15 @@ def load_config():
             cfg.setdefault("latitude", "")
             cfg.setdefault("longitude", "")
             cfg.setdefault("ts_authkey", "")
+            # Ensure Auth exists
+            if "admin_username" not in cfg:
+                cfg["admin_username"] = "admin"
+                cfg["admin_password"] = cipher_suite.encrypt(b"admin").decode('utf-8')
             return cfg
     
     config = {
+        "admin_username": "admin",
+        "admin_password": cipher_suite.encrypt(b"admin").decode('utf-8'),
         "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
@@ -63,69 +87,46 @@ state = {
     "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None
 }
 
-def get_ts_status():
-    ts_status = "Offline"
-    try:
-        res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True)
-        if res.returncode == 0:
-            ts_data = json.loads(res.stdout)
-            ts_status = ts_data.get("BackendState", "Offline")
-            if ts_status == "Running":
-                ip = ts_data.get("Self", {}).get("TailscaleIPs", [""])[0]
-                ts_status = f"Connected ({ip})"
-    except Exception:
-        pass
-    return ts_status
+# --- Login Decorator ---
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login_page', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
 
-def get_nut_status():
-    host = app_config.get("nut_host")
-    port = app_config.get("nut_port", 3493)
-    if not host:
-        return "Not Configured"
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2) # Quick 2 second timeout so the page doesn't hang
-            s.connect((host, port))
-        return "Connected"
-    except Exception:
-        return "Offline / Unreachable"
+# --- Web Routes ---
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        
+        cfg_user = app_config.get("admin_username")
+        cfg_pass_enc = app_config.get("admin_password")
+        
+        try:
+            cfg_pass = cipher_suite.decrypt(cfg_pass_enc.encode('utf-8')).decode('utf-8')
+        except Exception:
+            cfg_pass = "admin" # Fallback if decryption fails
 
-def update_outage_map():
-    token = app_config.get("mapbox_token")
-    lat = app_config.get("latitude")
-    lon = app_config.get("longitude")
-    if not token or not lat or not lon: return None
-    url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
-    try:
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        filepath = "static/outage_map.jpg"
-        with open(filepath, 'wb') as f: f.write(resp.content)
-        return filepath
-    except Exception as e:
-        logging.error(f"Mapbox Generation Error: {e}")
-        return None
-
-def send_pushover(title, message, priority=1, include_map=False):
-    user = app_config.get("pushover_user")
-    token = app_config.get("pushover_token")
-    if not user or not token: return False
-    data = {"token": token, "user": user, "title": title, "message": message, "priority": priority}
-    image_path = update_outage_map() if include_map else None
-    try:
-        if image_path and os.path.exists(image_path):
-            with open(image_path, "rb") as img:
-                files = {"attachment": ("map.jpg", img, "image/jpeg")}
-                resp = requests.post("https://api.pushover.net/1/messages.json", data=data, files=files)
+        if username == cfg_user and password == cfg_pass:
+            session['logged_in'] = True
+            return redirect(url_for('index'))
         else:
-            resp = requests.post("https://api.pushover.net/1/messages.json", data=data)
-        resp.raise_for_status()
-        return True
-    except Exception as e:
-        logging.error(f"Pushover Error: {e}")
-        return False
+            error = "Invalid credentials. Please try again."
+            
+    return render_template("login.html", error=error)
+
+@app.route("/logout")
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login_page'))
 
 @app.route("/")
+@login_required
 def index():
     duration = 0
     if state["is_outage"] and state["outage_start_time"]:
@@ -133,6 +134,7 @@ def index():
     return render_template("index.html", state=state, config=app_config, duration=duration, ts_status=get_ts_status())
 
 @app.route("/history")
+@login_required
 def history_page():
     history_data = load_history()
     history_data["grid"] = history_data["grid"][::-1]
@@ -140,6 +142,7 @@ def history_page():
     return render_template("history.html", state=state, config=app_config, history=history_data)
 
 @app.route("/config", methods=["GET", "POST"])
+@login_required
 def config_page():
     global app_config
     ts_status = get_ts_status()
@@ -151,11 +154,17 @@ def config_page():
             if val.lower() == "clear": return ""
             return val
 
+        # Handle Auth Updates
+        new_username = request.form.get("admin_username", "").strip()
+        new_password = request.form.get("admin_password", "")
+        if new_username:
+            app_config["admin_username"] = new_username
+        if new_password:
+            app_config["admin_password"] = cipher_suite.encrypt(new_password.encode('utf-8')).decode('utf-8')
+
         new_ts_key = get_secure("ts_authkey")
-        
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
             try:
-                logging.info("Authenticating with new Tailscale key...")
                 subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=false"], check=True)
             except Exception as e:
                 logging.error(f"Tailscale auth failed: {e}")
@@ -191,10 +200,67 @@ def config_page():
     return render_template("config.html", config=app_config, ts_status=ts_status, nut_status=get_nut_status())
 
 @app.route("/test-pushover", methods=["POST"])
+@login_required
 def test_pushover():
     if send_pushover("🔔 Pushover Test", "Configuration working perfectly.", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
+
+# --- Helper & Polling Functions ---
+def get_ts_status():
+    ts_status = "Offline"
+    try:
+        res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True)
+        if res.returncode == 0:
+            ts_data = json.loads(res.stdout)
+            ts_status = ts_data.get("BackendState", "Offline")
+            if ts_status == "Running":
+                ip = ts_data.get("Self", {}).get("TailscaleIPs", [""])[0]
+                ts_status = f"Connected ({ip})"
+    except Exception: pass
+    return ts_status
+
+def get_nut_status():
+    host = app_config.get("nut_host")
+    port = app_config.get("nut_port", 3493)
+    if not host: return "Not Configured"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(2)
+            s.connect((host, port))
+        return "Connected"
+    except Exception: return "Offline / Unreachable"
+
+def update_outage_map():
+    token = app_config.get("mapbox_token")
+    lat = app_config.get("latitude")
+    lon = app_config.get("longitude")
+    if not token or not lat or not lon: return None
+    url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        filepath = "static/outage_map.jpg"
+        with open(filepath, 'wb') as f: f.write(resp.content)
+        return filepath
+    except Exception: return None
+
+def send_pushover(title, message, priority=1, include_map=False):
+    user = app_config.get("pushover_user")
+    token = app_config.get("pushover_token")
+    if not user or not token: return False
+    data = {"token": token, "user": user, "title": title, "message": message, "priority": priority}
+    image_path = update_outage_map() if include_map else None
+    try:
+        if image_path and os.path.exists(image_path):
+            with open(image_path, "rb") as img:
+                files = {"attachment": ("map.jpg", img, "image/jpeg")}
+                resp = requests.post("https://api.pushover.net/1/messages.json", data=data, files=files)
+        else:
+            resp = requests.post("https://api.pushover.net/1/messages.json", data=data)
+        resp.raise_for_status()
+        return True
+    except Exception: return False
 
 def fetch_nut_data():
     host = app_config.get("nut_host")
