@@ -2,13 +2,13 @@
 
 Outage Tracker is a lightweight, self-hosted Docker application designed to monitor both your local home rack's battery health and your neighborhood's power grid simultaneously. 
 
-While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a mesh VPN to monitor your local battery runtime. 
+While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a built-in mesh VPN to monitor your local battery runtime. 
 
-Main Dashboard:</br>
-<img width="990" height="885" alt="image" src="https://github.com/user-attachments/assets/b2d57886-44b8-4760-97f1-985ec3f39133" />
+Main Page:</br>
+<img width="988" height="886" alt="tracker main" src="https://github.com/user-attachments/assets/ac7818ee-59e5-4169-9c6d-9328e63182f1" />
 
 History Logs:</br>
-<img width="999" height="246" alt="image" src="https://github.com/user-attachments/assets/bbeba38d-3f12-4a2e-920f-cc980e43faab" />
+<img width="993" height="297" alt="tracker history" src="https://github.com/user-attachments/assets/d0de298e-c792-4136-9196-df70772065bb" />
 
 ## 🤔 Why dual-tracking? (Grid vs. UPS)
 
@@ -22,12 +22,11 @@ If you already have a UPS, why do you need to poll the power company?
 
 * **Grid Monitoring (KUBRA API):** Natively supports tracking any major utility company that uses the KUBRA Storm Center platform (Georgia Power, Duke Energy, Alabama Power, FirstEnergy, Entergy) as well as Pacific Power.
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
-* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage and UPS battery event so you can review your power stability over time.
-* **Smart Alerting:** Configurable delay thresholds so you only get alerted if the neighborhood outage lasts longer than your UPS can handle.
-* **Instant Critical Alerts:** If a local UPS goes on battery (`OB`) and drops below your minimum safe runtime, it fires an immediate critical alert.
+* **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network.
+* **Zero-Knowledge Security:** Sensitive API tokens, VPN auth keys, and home coordinates are configured as "Write-Only" in the UI. Once saved, they are hidden from the frontend to protect your data.
+* **Live Connection Diagnostics:** The settings dashboard features real-time socket checks to visually verify if your NUT server and Tailscale network are connected.
 * **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
-* **Web UI Configured:** Update your tracked zip code, API keys, and map URLs directly from the Web UI dashboard without having to rewrite config files.
-* **Dynamic Dashboard:** A responsive, dark-mode Bootstrap dashboard. If you don't use a UPS or don't want a map banner, those elements gracefully auto-hide and center the remaining data.
+* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage and UPS battery event so you can review your power stability over time.
 
 ---
 
@@ -41,9 +40,10 @@ outage-tracker/
 ├── compose.yaml
 ├── requirements.txt
 ├── app.py
+├── entrypoint.sh      <-- Tailscale startup script
 ├── static/
-│   ├── favicon.ico
-│   └── logo.svg
+│   ├── favicon.ico    <-- Your browser tab icon
+│   └── logo.svg       <-- Your custom header logo
 └── templates/
     ├── config.html
     ├── history.html
@@ -54,7 +54,7 @@ outage-tracker/
 
 ## 🚀 Installation
 
-Deploy via Docker Compose. The application uses a single persistent volume to save your settings and history logs from the Web UI.
+Deploy via Docker Compose. The application uses a single persistent volume to save your settings, Tailscale identity, and history logs.
 
 ### `compose.yaml`
 
@@ -68,8 +68,12 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/app/data
+      - /dev/net/tun:/dev/net/tun   # Required for Tailscale networking
+    cap_add:
+      - NET_ADMIN                   # Required for Tailscale networking
+      - NET_RAW
     environment:
-      - TZ=America/New_York # Change this to your local timezone
+      - TZ=America/New_York         # Change this to your local timezone
 ```
 
 Start the container:
@@ -84,11 +88,15 @@ Once running, access the dashboard at `http://<YOUR-DOCKER-IP>:8080`.
 
 On your first boot, the app will load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
-<img width="2174" height="1480" alt="config" src="https://github.com/user-attachments/assets/896439d8-345c-4a41-ba71-bb22a0a7ec93" />
+<img width="806" height="1727" alt="tracker settings" src="https://github.com/user-attachments/assets/536c0481-3317-4bf3-b87c-a1fc11ac3ba3" />
 
-### 1. Utility Grid Settings
+### 1. Built-in Tailscale VPN (For Remote VPS Users)
+If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
+1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
+2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
+
+### 2. Utility Grid Settings
 To track your local power grid, you need to provide the direct JSON data URL from your utility company's map. Finding your Zip Code endpoint is easy:
-
 1. Open your power company's outage map in your desktop browser.
 2. Press **F12** to open Developer Tools and navigate to the **Network** tab.
 3. In the Network filter box, type `json`.
@@ -98,29 +106,56 @@ To track your local power grid, you need to provide the direct JSON data URL fro
 
 <img width="2167" height="874" alt="Untitled-1" src="https://github.com/user-attachments/assets/bf009ac6-ee74-4ad2-a5df-2351c46a9941" />
 
-*(Optional: You can also paste the URL to your utility's main map and report pages to generate a clickable banner and button on your dashboard).*
-
-### 2. Local UPS Settings (Optional)
+### 3. Local UPS Settings (Optional)
 If you run a local NUT server, enter its IP and Port. 
 * Set **UPS Names** to `auto` to automatically fetch every UPS attached to the server, or list them manually (e.g., `nutdev1,nutdev2`).
-* If you leave the NUT Host field blank, the UPS tracking panel will hide itself and the Grid tracking panel will expand to fill the screen.
 
-> **🔒 Remote Hosting & VPNs:** If you are running Outage Tracker on a remote Cloud VPS, **do not** port-forward your home router to expose your NUT server to the public internet! Instead, install a free mesh VPN like [Tailscale](https://tailscale.com/) or WireGuard on both your home server and your Cloud VPS. You can then safely enter your home server's secure `100.x.x.x` Tailscale IP into the Web UI.
-
-### 3. Mapbox Image Alerts (Optional)
+### 4. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
-* Create a free account at [Mapbox](https://www.mapbox.com/).
-* Copy your **Default Public Token** (`pk.eyJ1...`).
+* Copy your **Default Public Token** (`pk.eyJ1...`) from Mapbox.
 * Enter the Token, plus your exact home **Latitude** and **Longitude** in the Web UI.
 
-### 4. Pushover Integration
-Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token.
-* **User Key:** Found on your main Pushover dashboard.
-* **API Token:** Found under your specific Application's settings.
+### 5. Pushover Integration
+Create a free account at Pushover.net and create an "Application" to get your API Token.
+* User Key: Found on your main Pushover dashboard.
+* API Token: Found under your specific Application's settings.
 
 <img width="429" height="351" alt="pushover_test" src="https://github.com/user-attachments/assets/b8f364b7-cb07-4a82-80ff-dfa4945a35a5" />
 
-Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
+---
+
+## 🛡️ Firewalls & Advanced Networking
+
+If you are operating a multi-VLAN homelab or a "Zero Trust" environment, you may encounter `[Errno 111] Connection refused` when Outage Tracker attempts to reach your NUT server. Here is how to resolve cross-VLAN and VPN routing issues:
+
+### 1. Configure NUT to listen on all interfaces
+By default, NUT only listens to `localhost`. You must tell it to listen to your Tailscale and VLAN interfaces.
+Edit `/etc/nut/upsd.conf` on your NUT server:
+```text
+# Comment out other LISTEN directives and add:
+LISTEN 0.0.0.0 3493
+```
+Restart the service: `sudo systemctl restart nut-server`
+
+### 2. Configure Host Firewalls (UFW)
+If your NUT Server runs a host-level firewall like UFW, it will block incoming connections from the VPN and other local subnets.
+Run the following on your NUT server to allow traffic:
+```bash
+# Allow Tailscale VPN traffic
+sudo ufw allow in on tailscale0 to any port 3493
+
+# Allow internal cross-VLAN traffic (e.g., from Home Assistant)
+sudo ufw allow from 10.0.0.0/8 to any port 3493
+```
+
+### 3. The "Tailscale Route Hijack" Fix
+If local devices (like Home Assistant on VLAN 103) suddenly lose access to your NUT server (on VLAN 1) after installing Tailscale, you are likely experiencing **Asymmetric Routing**. The NUT server receives the local packet, but attempts to send the reply back *through* the Tailscale tunnel instead of your physical router.
+
+To fix this, disable route acceptance on the NUT server so it ignores Tailscale subnets and respects your physical router's routing table:
+```bash
+sudo tailscale up --accept-routes=false
+```
+*(Alternatively, create a Layer 3 pinhole rule in your primary router/firewall to pass traffic directly between the VLANs, keeping local traffic entirely off the VPN).*
 
 ---
 
