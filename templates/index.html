@@ -86,7 +86,12 @@
                     <h5 class="text-center text-muted">Local UPS Systems</h5>
                     <hr>
                     {% if not state.ups_data %}
-                        <h2 class="text-secondary text-center mt-4" id="nut-check">CONNECTING...</h2>
+                        {% if state.nut_error %}
+                            <h5 class="text-danger text-center mt-4">🔌 Offline</h5>
+                            <p class="text-muted text-center small">{{ state.nut_error }}</p>
+                        {% else %}
+                            <h2 class="text-secondary text-center mt-4" id="nut-check">CONNECTING...</h2>
+                        {% endif %}
                     {% else %}
                         <div class="d-flex flex-column gap-3 mt-2">
                         {% for ups_name, ups_info in state.ups_data.items() %}
