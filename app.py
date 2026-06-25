@@ -5,6 +5,7 @@ import threading
 import requests
 import logging
 import json
+import subprocess
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 
@@ -25,6 +26,7 @@ def load_config():
             cfg.setdefault("mapbox_token", "")
             cfg.setdefault("latitude", "")
             cfg.setdefault("longitude", "")
+            cfg.setdefault("ts_authkey", "")
             return cfg
     
     config = {
@@ -32,7 +34,7 @@ def load_config():
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
         "pushover_user": "", "pushover_token": "",
-        "mapbox_token": "", "latitude": "", "longitude": ""
+        "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": ""
     }
     save_config(config)
     return config
@@ -65,17 +67,13 @@ def update_outage_map():
     token = app_config.get("mapbox_token")
     lat = app_config.get("latitude")
     lon = app_config.get("longitude")
-    
-    if not token or not lat or not lon:
-        return None
-        
+    if not token or not lat or not lon: return None
     url = f"https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+f44336({lon},{lat})/{lon},{lat},13,0/800x400@2x?access_token={token}"
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         filepath = "static/outage_map.jpg"
-        with open(filepath, 'wb') as f:
-            f.write(resp.content)
+        with open(filepath, 'wb') as f: f.write(resp.content)
         return filepath
     except Exception as e:
         logging.error(f"Mapbox Generation Error: {e}")
@@ -85,10 +83,8 @@ def send_pushover(title, message, priority=1, include_map=False):
     user = app_config.get("pushover_user")
     token = app_config.get("pushover_token")
     if not user or not token: return False
-        
     data = {"token": token, "user": user, "title": title, "message": message, "priority": priority}
     image_path = update_outage_map() if include_map else None
-
     try:
         if image_path and os.path.exists(image_path):
             with open(image_path, "rb") as img:
@@ -96,7 +92,6 @@ def send_pushover(title, message, priority=1, include_map=False):
                 resp = requests.post("https://api.pushover.net/1/messages.json", data=data, files=files)
         else:
             resp = requests.post("https://api.pushover.net/1/messages.json", data=data)
-            
         resp.raise_for_status()
         return True
     except Exception as e:
@@ -120,15 +115,38 @@ def history_page():
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
     global app_config
+    
+    # Check Tailscale Connection Status for the UI
+    ts_status = "Offline"
+    try:
+        res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True)
+        if res.returncode == 0:
+            ts_data = json.loads(res.stdout)
+            ts_status = ts_data.get("BackendState", "Offline")
+            if ts_status == "Running":
+                ip = ts_data.get("Self", {}).get("TailscaleIPs", [""])[0]
+                ts_status = f"Connected ({ip})"
+    except Exception:
+        pass
+
     if request.method == "POST":
-        
         def get_secure(field_name):
             val = request.form.get(field_name, "").strip()
-            if not val: 
-                return app_config.get(field_name, "")
-            if val.lower() == "clear": 
-                return ""
+            if not val: return app_config.get(field_name, "")
+            if val.lower() == "clear": return ""
             return val
+
+        new_ts_key = get_secure("ts_authkey")
+        
+        # Trigger Tailscale Auth if a new key was entered
+        if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
+            try:
+                logging.info("Authenticating with new Tailscale key...")
+                subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=false"], check=True)
+            except Exception as e:
+                logging.error(f"Tailscale auth failed: {e}")
+        elif request.form.get("ts_authkey", "").strip().lower() == "clear":
+            subprocess.run(["tailscale", "logout"])
 
         app_config.update({
             "company_name": request.form.get("company_name", "").strip(),
@@ -146,6 +164,7 @@ def config_page():
             "mapbox_token": get_secure("mapbox_token"),
             "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"),
+            "ts_authkey": new_ts_key,
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config["nut_host"])
@@ -153,8 +172,9 @@ def config_page():
         state["outage_start_time"] = None
         state["alert_sent"] = False
         state["etr"] = "Unavailable"
-        return redirect(url_for('index'))
-    return render_template("config.html", config=app_config)
+        return redirect(url_for('config_page'))
+        
+    return render_template("config.html", config=app_config, ts_status=ts_status)
 
 @app.route("/test-pushover", methods=["POST"])
 def test_pushover():
