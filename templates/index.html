@@ -73,7 +73,7 @@
                     {% endif %}
                     
                     <div class="mt-4 text-muted small">
-                        Last API Check: <span id="gp-check">{{ state.last_check if state.last_check else 'Pending...' }}</span><br>
+                        Last API Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span><br>
                         {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
                     </div>
                 </div>
