@@ -64,7 +64,6 @@ state = {
 }
 
 def get_ts_status():
-    """Helper function to fetch current Tailscale status"""
     ts_status = "Offline"
     try:
         res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True)
@@ -77,6 +76,19 @@ def get_ts_status():
     except Exception:
         pass
     return ts_status
+
+def get_nut_status():
+    host = app_config.get("nut_host")
+    port = app_config.get("nut_port", 3493)
+    if not host:
+        return "Not Configured"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(2) # Quick 2 second timeout so the page doesn't hang
+            s.connect((host, port))
+        return "Connected"
+    except Exception:
+        return "Offline / Unreachable"
 
 def update_outage_map():
     token = app_config.get("mapbox_token")
@@ -176,7 +188,7 @@ def config_page():
         state["etr"] = "Unavailable"
         return redirect(url_for('config_page'))
         
-    return render_template("config.html", config=app_config, ts_status=ts_status)
+    return render_template("config.html", config=app_config, ts_status=ts_status, nut_status=get_nut_status())
 
 @app.route("/test-pushover", methods=["POST"])
 def test_pushover():
