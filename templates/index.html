@@ -20,11 +20,24 @@
 </head>
 <body>
     <div class="container" style="max-width: 1000px;">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="mb-0 d-flex align-items-center">
+        
+        <!-- Updated Header with Centered Tailscale Badge -->
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+            <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
-                Power Tracking Dashboard
+                <span class="d-none d-sm-inline">Power Tracker</span>
             </h2>
+            
+            {% if config.ts_authkey %}
+                <div>
+                    {% if "Connected" in ts_status %}
+                        <span class="badge bg-success p-2 fs-6">🌐 Tailscale: {{ ts_status }}</span>
+                    {% else %}
+                        <span class="badge bg-secondary p-2 fs-6">🌐 Tailscale: {{ ts_status }}</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+
             <div>
                 <a href="/history" class="btn btn-outline-info me-2">📜 History</a>
                 <a href="/config" class="btn btn-outline-light">⚙️ Settings</a>
@@ -47,7 +60,6 @@
                     {% elif state.is_outage %}
                         <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
                         <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
-                        <!-- NEW: Estimated Restoration Display -->
                         <p class="mb-1">Est. Restoration: <strong>{{ state.etr }}</strong></p>
                         <p>Duration: <strong>{{ duration }} minutes</strong></p>
                         {% if state.alert_sent %}
