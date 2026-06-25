@@ -95,9 +95,9 @@ On your first boot, you will be met with a secure login screen.
 **Default Password:** `admin`
 *(Note: Please log in and immediately change your password in the Settings page!)*
 
-On your first boot, the app will load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
-
 > **🔐 Forgot your password?** If you get locked out of your dashboard, SSH into your docker host and run `docker exec -it outage-tracker python reset_auth.py`. Your password will instantly reset to `admin` without deleting any of your saved utility or VPN settings!
+
+The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
 <img width="948" height="2018" alt="tracker config3" src="https://github.com/user-attachments/assets/df532001-004e-4d92-bcc0-23fe26c6edea" />
 
