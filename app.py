@@ -63,6 +63,21 @@ state = {
     "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None
 }
 
+def get_ts_status():
+    """Helper function to fetch current Tailscale status"""
+    ts_status = "Offline"
+    try:
+        res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True)
+        if res.returncode == 0:
+            ts_data = json.loads(res.stdout)
+            ts_status = ts_data.get("BackendState", "Offline")
+            if ts_status == "Running":
+                ip = ts_data.get("Self", {}).get("TailscaleIPs", [""])[0]
+                ts_status = f"Connected ({ip})"
+    except Exception:
+        pass
+    return ts_status
+
 def update_outage_map():
     token = app_config.get("mapbox_token")
     lat = app_config.get("latitude")
@@ -103,7 +118,7 @@ def index():
     duration = 0
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
-    return render_template("index.html", state=state, config=app_config, duration=duration)
+    return render_template("index.html", state=state, config=app_config, duration=duration, ts_status=get_ts_status())
 
 @app.route("/history")
 def history_page():
@@ -115,20 +130,8 @@ def history_page():
 @app.route("/config", methods=["GET", "POST"])
 def config_page():
     global app_config
+    ts_status = get_ts_status()
     
-    # Check Tailscale Connection Status for the UI
-    ts_status = "Offline"
-    try:
-        res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True)
-        if res.returncode == 0:
-            ts_data = json.loads(res.stdout)
-            ts_status = ts_data.get("BackendState", "Offline")
-            if ts_status == "Running":
-                ip = ts_data.get("Self", {}).get("TailscaleIPs", [""])[0]
-                ts_status = f"Connected ({ip})"
-    except Exception:
-        pass
-
     if request.method == "POST":
         def get_secure(field_name):
             val = request.form.get(field_name, "").strip()
@@ -138,7 +141,6 @@ def config_page():
 
         new_ts_key = get_secure("ts_authkey")
         
-        # Trigger Tailscale Auth if a new key was entered
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
             try:
                 logging.info("Authenticating with new Tailscale key...")
