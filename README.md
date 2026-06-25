@@ -68,6 +68,7 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/app/data
+      - ./auth_key:/app/auth_key    # Persists the encryption key securely outside the data folder
       - /dev/net/tun:/dev/net/tun   # Required for Tailscale networking
     cap_add:
       - NET_ADMIN                   # Required for Tailscale networking
@@ -86,7 +87,14 @@ Once running, access the dashboard at `http://<YOUR-DOCKER-IP>:8080`.
 
 ## ⚙️ Configuration
 
+On your first boot, you will be met with a secure login screen. 
+**Default Username:** `admin`
+**Default Password:** `admin`
+*(Note: Please log in and immediately change your password in the Settings page!)*
+
 On your first boot, the app will load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
+
+> **🔐 Forgot your password?** If you get locked out of your dashboard, SSH into your docker host and run `docker exec -it outage-tracker python reset_auth.py`. Your password will instantly reset to `admin` without deleting any of your saved utility or VPN settings!
 
 <img width="806" height="1727" alt="tracker settings" src="https://github.com/user-attachments/assets/536c0481-3317-4bf3-b87c-a1fc11ac3ba3" />
 
