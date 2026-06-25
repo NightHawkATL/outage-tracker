@@ -88,7 +88,16 @@
 
             <!-- Local NUT Settings -->
             <div class="card p-4 mb-4">
-                <h4 class="text-info mb-3">Local UPS Settings (Optional)</h4>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="text-info mb-0">Local UPS Settings (Optional)</h4>
+                    {% if nut_status == "Connected" %}
+                        <span class="badge bg-success p-2">🔌 NUT: {{ nut_status }}</span>
+                    {% elif nut_status == "Not Configured" %}
+                        <span class="badge bg-secondary p-2">🔌 NUT: {{ nut_status }}</span>
+                    {% else %}
+                        <span class="badge bg-danger p-2">🔌 NUT: {{ nut_status }}</span>
+                    {% endif %}
+                </div>
                 <p class="small text-muted mb-3">Leave Host field blank to disable UPS tracking and widen the dashboard view.</p>
                 <div class="row g-3">
                     <div class="col-md-8">
