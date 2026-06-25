@@ -27,7 +27,6 @@
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
                 <span class="d-none d-sm-inline">Outage Tracker</span>
             </h2>
-            
             {% if config.ts_authkey %}
                 <div>
                     {% if "Connected" in ts_status %}
@@ -37,10 +36,10 @@
                     {% endif %}
                 </div>
             {% endif %}
-
             <div>
                 <a href="/history" class="btn btn-outline-info me-2">📜 History</a>
-                <a href="/config" class="btn btn-outline-light">⚙️ Settings</a>
+                <a href="/config" class="btn btn-outline-light me-2">⚙️ Settings</a>
+                <a href="/logout" class="btn btn-outline-danger">🚪 Logout</a>
             </div>
         </div>
         
