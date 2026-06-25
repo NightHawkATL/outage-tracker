@@ -2,10 +2,14 @@ services:
   outage-tracker:
     build: .
     container_name: outage-tracker
-    restart: unless-stopped
     ports:
       - "8585:8080"
     volumes:
       - /mnt/Apps/Storage/outage-tracker:/app/data
+      - /dev/net/tun:/dev/net/tun   # Required for Tailscale
+    cap_add:
+      - NET_ADMIN                   # Required for Tailscale
+      - NET_RAW
     environment:
       - TZ=America/New_York
+    restart: unless-stopped
