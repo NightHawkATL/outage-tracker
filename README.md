@@ -137,6 +137,8 @@ To receive rich map images of your neighborhood attached to your Pushover alerts
 ### 6. Pushover Integration
 Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token. Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
 
+<img width="429" height="351" alt="pushover_test" src="https://github.com/user-attachments/assets/b8f364b7-cb07-4a82-80ff-dfa4945a35a5" />
+
 ---
 
 ## 📱 Pushover Notification Examples
