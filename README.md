@@ -145,7 +145,7 @@ Create a free account at [Pushover.net](https://pushover.net/) and create an "Ap
 
 ## 📱 Pushover Notification Examples
 
-Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *30114*, and a UPS named *nutdev1* as examples):
+Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *30001*, and a UPS named *nutdev1* as examples):
 
 ### ⚡ Grid Outage Events
 
@@ -153,7 +153,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the utility company API reports an outage in your zip code that outlasts your configured threshold.*
 > **Title:** 🚨 Georgia Power Outage Alert  
 > **Message:**   
-> Power out in 30114 for >10 mins.  
+> Power out in 30001 for >10 mins.  
 > Affected: 1245  
 > Est. Restoration: Today at 5:00 PM  
 > **Attachment:** 🗺️ *(A dark-themed Mapbox street map of your exact home coordinates)*
@@ -162,7 +162,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the utility company API updates to show 0 customers affected in your zip code.*
 > **Title:** ✅ Georgia Power Power Restored  
 > **Message:**   
-> Restored in 30114!  
+> Restored in 30001!  
 > Outage lasted 112 mins.
 
 ### 🔋 Local UPS Events
@@ -185,13 +185,13 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the watchdog fails to ping the target for your configured threshold limit.*
 > **Title:** 🌐 ⚠️ Network Offline  
 > **Message:**   
-> Primary WAN connection to 100.122.66.74:80 failed for >5 mins.
+> Primary WAN connection to 100.123.123.12:80 failed for >5 mins.
 
 **Network Restored** (Priority 0 - Normal)
 *Triggered when the network target becomes reachable again.*
 > **Title:** ✅ Network Restored  
 > **Message:**   
-> Primary WAN connection to 100.122.66.74:80 restored.  
+> Primary WAN connection to 100.123.123.12:80 restored.  
 > Downtime: 45 mins.
 
 ### 🔔 System Testing
@@ -228,7 +228,7 @@ Run the following on your NUT server to allow traffic:
 sudo ufw allow in on tailscale0 to any port 3493
 
 # Allow internal cross-VLAN traffic (e.g., from Home Assistant)
-sudo ufw allow from 10.0.0.0/8 to any port 3493
+sudo ufw allow from 10.0.0.0/8 to any port 3493 # Make sure to change this to your local IP subnet (172.16.0.0/12 or 192.168.0.0/16)
 ```
 
 ### 3. The "Tailscale Route Hijack" Fix
