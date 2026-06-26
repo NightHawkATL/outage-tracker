@@ -5,10 +5,10 @@ Outage Tracker is a lightweight, self-hosted Docker application designed to moni
 While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a built-in mesh VPN to monitor your local battery runtime. 
 
 Main Page:</br>
-<img width="988" height="886" alt="tracker main" src="https://github.com/user-attachments/assets/ac7818ee-59e5-4169-9c6d-9328e63182f1" />
+<img width="882" height="860" alt="image" src="https://github.com/user-attachments/assets/350b7acd-7df0-4845-a035-66fbcf162655" />
 
 History Logs:</br>
-<img width="993" height="297" alt="tracker history" src="https://github.com/user-attachments/assets/d0de298e-c792-4136-9196-df70772065bb" />
+<img width="1186" height="294" alt="image" src="https://github.com/user-attachments/assets/e347e3f5-a1d9-4f90-a432-f626b852dfb6" />
 
 ## 🤔 Why dual-tracking? (Grid vs. UPS)
 
@@ -100,7 +100,7 @@ On your first boot, you will be met with a secure login screen.
 
 The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
-<img width="948" height="2018" alt="tracker config3" src="https://github.com/user-attachments/assets/df532001-004e-4d92-bcc0-23fe26c6edea" />
+<img width="806" height="2368" alt="configuration" src="https://github.com/user-attachments/assets/3e7e7598-76c2-41e3-b8d2-e656b10d0d57" />
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
