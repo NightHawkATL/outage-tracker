@@ -10,13 +10,15 @@ Main Page:</br>
 History Logs:</br>
 <img width="1186" height="294" alt="image" src="https://github.com/user-attachments/assets/e347e3f5-a1d9-4f90-a432-f626b852dfb6" />
 
-## 🤔 Why dual-tracking? (Grid vs. UPS)
+## 🤔 Why multi-layer tracking? (Grid, UPS, & Network)
 
-If you already have a UPS, why do you need to poll the power company?
+If you already have a UPS, why do you need to poll the power company and your internet connection from a remote server?
 
 1. **The "Dead Internet" Problem:** If your neighborhood loses power, the coax/fiber node down the street might lose power too. Even if your servers and router are on a UPS, your home internet drops. A local NUT server can't send you an email/push notification without internet. Because Outage Tracker runs on a remote VPS, it will see the utility company report the outage and alert you, even if your house is completely offline.
 2. **The "Neighborhood" View:** The Utility API tells you what is happening in your Zip Code. You can get alerted about a major outage hitting your neighborhood while you are at work, before you even get home.
 3. **The "Local Rack" View:** Meanwhile, the NUT integration tells you exactly what is happening to your physical hardware. If the power drops, Outage Tracker monitors the exact battery percentage and runtime of your UPS array, sending critical alerts when your servers are about to die.
+4. **The "ISP Outage" View (Watchdog):** Sometimes the power is perfectly fine, but your ISP goes down. The built-in Network Watchdog continuously pings your home network's IP or Tailscale node from the outside. If it drops, your VPS immediately alerts you that your home internet is offline, completely independent of the power grid!
+
 
 ## ✨ Features
 
