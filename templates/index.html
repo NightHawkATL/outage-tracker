@@ -78,21 +78,46 @@
                         {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
                     </div>
 
-                    <!-- NEW: Network Watchdog Panel (Dynamically visible) -->
-                    {% if config.watchdog_ip %}
+                    <!-- NEW: Dual-WAN Watchdog Panel -->
+                    {% if config.watchdog_ip or config.watchdog_ip_2 %}
                     <hr class="my-4 border-secondary">
                     <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
                         <h5 class="text-info mb-3">Home Network Watchdog</h5>
-                        {% if state.watchdog_online %}
-                            <h3 class="status-ok mb-2 fs-4">NETWORK ONLINE</h3>
-                            <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
-                        {% else %}
-                            <h3 class="status-outage mb-2 fs-4">NETWORK OFFLINE</h3>
-                            <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip }}:{{ config.watchdog_port }})</p>
-                            <p class="small text-muted mb-0">Downtime: {{ wd_duration }} mins</p>
-                            {% if state.watchdog_alert_sent %}
-                                <span class="badge bg-danger p-1 mt-2">Network Alert Sent</span>
-                            {% endif %}
+                        
+                        {% if config.watchdog_ip %}
+                            {% set w1 = state.watchdogs["1"] %}
+                            <div class="mb-2">
+                                <h6 class="text-muted text-uppercase mb-2">Primary WAN</h6>
+                                {% if w1.online %}
+                                    <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
+                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
+                                {% else %}
+                                    <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
+                                    <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip }}:{{ config.watchdog_port }})</p>
+                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["1"] }} mins</p>
+                                    {% if w1.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        {% if config.watchdog_ip and config.watchdog_ip_2 %}
+                            <hr class="border-secondary my-3">
+                        {% endif %}
+
+                        {% if config.watchdog_ip_2 %}
+                            {% set w2 = state.watchdogs["2"] %}
+                            <div>
+                                <h6 class="text-muted text-uppercase mb-2">Secondary WAN</h6>
+                                {% if w2.online %}
+                                    <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
+                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }}</p>
+                                {% else %}
+                                    <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
+                                    <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }})</p>
+                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["2"] }} mins</p>
+                                    {% if w2.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
+                                {% endif %}
+                            </div>
                         {% endif %}
                     </div>
                     {% endif %}
