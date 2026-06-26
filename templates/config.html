@@ -156,6 +156,26 @@
                 </div>
             </div>
 
+            <!-- Home Network Watchdog -->
+            <div class="card p-4 mb-4 border border-secondary">
+                <h4 class="text-info mb-3">Home Network Watchdog (Optional)</h4>
+                <p class="small text-muted mb-3">Continuously ping a device on your home network to detect ISP or local network failures. Provide an IP and Port to enable.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Target IP / Hostname</label>
+                        <input type="text" name="watchdog_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip }}" placeholder="e.g. 100.x.x.x or MyPublicIP">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Port</label>
+                        <input type="number" name="watchdog_port" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_port }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Threshold (Mins)</label>
+                        <input type="number" name="watchdog_threshold" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold }}">
+                    </div>
+                </div>
+            </div>
+
             <p class="small text-warning text-center mb-3">🔒 For your security, saved API Keys and Coordinates are hidden from the interface. <br>Leave the fields blank to keep your current settings, or type <code>clear</code> to remove them.</p>
 
             <!-- Mapbox Image Generation -->
@@ -204,13 +224,11 @@
             const warn = document.getElementById('match-warning');
             const bar = document.getElementById('pwd-strength-bar');
 
-            // Handle Matching
             if (p1 || p2) {
                 if (p1 !== p2) { warn.style.display = 'block'; btn.disabled = true; } 
                 else { warn.style.display = 'none'; btn.disabled = false; }
             } else { warn.style.display = 'none'; btn.disabled = false; }
 
-            // Handle Strength
             let str = 0;
             if (p1.length >= 8) str += 25;
             if (p1.match(/[a-z]/) && p1.match(/[A-Z]/)) str += 25;
