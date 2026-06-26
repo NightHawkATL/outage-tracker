@@ -16,11 +16,13 @@
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 1000px;">
+    <!-- Increased to 1200px so thirds have breathing room -->
+    <div class="container" style="max-width: 1200px;">
+        <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="mb-0 d-flex align-items-center">
+            <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
-                Outage Tracker History
+                <span class="d-none d-sm-inline">Outage Tracker History</span>
             </h2>
             <div>
                 <a href="/" class="btn btn-outline-light me-2">🏠 Dashboard</a>
@@ -29,9 +31,26 @@
             </div>
         </div>
         
+        <!-- Dynamic Layout Logic -->
+        {% set show_nut = state.nut_enabled %}
+        {% set show_wd = config.watchdog_ip or history.watchdog %}
+
+        {% set active_panels = 1 %}
+        {% if show_nut %}{% set active_panels = active_panels + 1 %}{% endif %}
+        {% if show_wd %}{% set active_panels = active_panels + 1 %}{% endif %}
+
+        {% if active_panels == 3 %}
+            {% set col_class = 'col-lg-4 col-md-6' %}
+        {% elif active_panels == 2 %}
+            {% set col_class = 'col-md-6' %}
+        {% else %}
+            {% set col_class = 'col-lg-8 mx-auto' %}
+        {% endif %}
+
         <div class="row g-4 justify-content-center">
             
-            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
+            <!-- Grid History Column -->
+            <div class="{{ col_class }}">
                 <div class="card p-4 h-100">
                     <h5 class="text-warning text-center mb-4">⚡ Grid Outage Events</h5>
                     {% if not history.grid %}
@@ -58,8 +77,9 @@
                 </div>
             </div>
 
-            {% if state.nut_enabled %}
-            <div class="col-md-6">
+            <!-- UPS History Column -->
+            {% if show_nut %}
+            <div class="{{ col_class }}">
                 <div class="card p-4 h-100">
                     <h5 class="text-danger text-center mb-4">🔋 UPS "On Battery" Events</h5>
                     {% if not history.ups %}
@@ -86,32 +106,35 @@
                 </div>
             </div>
             {% endif %}
-        </div>
 
-        {% if history.watchdog %}
-        <div class="row mt-4 justify-content-center">
-            <div class="{% if state.nut_enabled %}col-12{% else %}col-lg-8{% endif %}">
-                <div class="card p-4">
+            <!-- Watchdog History Column -->
+            {% if show_wd %}
+            <div class="{{ col_class }}">
+                <div class="card p-4 h-100">
                     <h5 class="text-info text-center mb-4">🌐 Network Downtime Events</h5>
-                    <div class="d-flex flex-column gap-3">
-                        {% for event in history.watchdog %}
-                            <div class="p-3 history-item border-wd rounded">
-                                <div class="d-flex justify-content-between">
-                                    <h6 class="mb-1 text-white">Target: {{ event.target }}</h6>
-                                    <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                    {% if not history.watchdog %}
+                        <p class="text-center text-muted">No downtime events recorded.</p>
+                    {% else %}
+                        <div class="d-flex flex-column gap-3">
+                            {% for event in history.watchdog %}
+                                <div class="p-3 history-item border-wd rounded">
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="mb-1 text-white text-break">Target: {{ event.target }}</h6>
+                                        <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                    </div>
+                                    <div class="small text-secondary mt-1">
+                                        Offline: {{ event.start }}<br>
+                                        Restored: {{ event.end }}
+                                    </div>
                                 </div>
-                                <div class="small text-secondary mt-1">
-                                    Offline: {{ event.start }}<br>
-                                    Restored: {{ event.end }}
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
                 </div>
             </div>
+            {% endif %}
+
         </div>
-        {% endif %}
-        
     </div>
 </body>
 </html>
