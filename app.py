@@ -47,6 +47,9 @@ def load_config():
             cfg.setdefault("watchdog_ip", "")
             cfg.setdefault("watchdog_port", 80)
             cfg.setdefault("watchdog_threshold", 5)
+            cfg.setdefault("watchdog_ip_2", "")
+            cfg.setdefault("watchdog_port_2", 80)
+            cfg.setdefault("watchdog_threshold_2", 5)
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
                 cfg["admin_password"] = cipher_suite.encrypt(b"admin").decode('utf-8')
@@ -59,7 +62,8 @@ def load_config():
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
-        "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5
+        "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
+        "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5
     }
     save_config(config)
     return config
@@ -87,7 +91,11 @@ state = {
     "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
     "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None,
-    "watchdog_online": True, "watchdog_down_time": None, "watchdog_alert_sent": False, "watchdog_last_check": None
+    "watchdogs": {
+        "1": {"online": True, "down_time": None, "alert_sent": False},
+        "2": {"online": True, "down_time": None, "alert_sent": False}
+    },
+    "watchdog_last_check": None
 }
 
 def login_required(f):
@@ -135,11 +143,12 @@ def index():
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
         
-    wd_duration = 0
-    if not state["watchdog_online"] and state["watchdog_down_time"]:
-        wd_duration = int((datetime.now() - state["watchdog_down_time"]).total_seconds() / 60)
+    wd_durations = {"1": 0, "2": 0}
+    for w_id in ["1", "2"]:
+        if not state["watchdogs"][w_id]["online"] and state["watchdogs"][w_id]["down_time"]:
+            wd_durations[w_id] = int((datetime.now() - state["watchdogs"][w_id]["down_time"]).total_seconds() / 60)
         
-    return render_template("index.html", state=state, config=app_config, duration=duration, wd_duration=wd_duration, ts_status=get_ts_status())
+    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status())
 
 @app.route("/history")
 @login_required
@@ -188,6 +197,9 @@ def config_page():
             "watchdog_ip": request.form.get("watchdog_ip", "").strip(),
             "watchdog_port": int(request.form.get("watchdog_port", 80)),
             "watchdog_threshold": int(request.form.get("watchdog_threshold", 5)),
+            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(),
+            "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
+            "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
@@ -198,8 +210,9 @@ def config_page():
         state["outage_start_time"] = None
         state["alert_sent"] = False
         state["etr"] = "Unavailable"
-        state["watchdog_online"] = True
-        state["watchdog_alert_sent"] = False
+        for w in ["1", "2"]:
+            state["watchdogs"][w]["online"] = True
+            state["watchdogs"][w]["alert_sent"] = False
         return redirect(url_for('config_page'))
         
     return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=get_nut_status())
@@ -306,52 +319,60 @@ def fetch_nut_data():
 
 def poll_watchdog():
     while True:
-        ip = app_config.get("watchdog_ip")
-        port = app_config.get("watchdog_port", 80)
-        thresh = app_config.get("watchdog_threshold", 5)
+        for w_id in ["1", "2"]:
+            suffix = "" if w_id == "1" else "_2"
+            ip = app_config.get(f"watchdog_ip{suffix}")
+            port = app_config.get(f"watchdog_port{suffix}", 80)
+            thresh = app_config.get(f"watchdog_threshold{suffix}", 5)
 
-        if ip:
-            is_online = False
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(4)
-                    s.connect((ip, int(port)))
-                    is_online = True
-            except Exception: pass
+            if ip:
+                is_online = False
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.settimeout(4)
+                        s.connect((ip, int(port)))
+                        is_online = True
+                except Exception: pass
 
-            state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
+                state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
+                wd_state = state["watchdogs"][w_id]
+                name = "Primary WAN" if w_id == "1" else "Secondary WAN"
 
-            if is_online:
-                if not state.get("watchdog_online", True):
-                    # We recovered from an outage
-                    elapsed = (datetime.now() - state["watchdog_down_time"]).total_seconds() / 60
-                    hist = load_history()
-                    hist["watchdog"].append({
-                        "target": f"{ip}:{port}", "start": state["watchdog_down_time"].strftime("%Y-%m-%d %I:%M %p"),
-                        "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed)
-                    })
-                    save_history(hist)
+                if is_online:
+                    if not wd_state.get("online", True):
+                        elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
+                        hist = load_history()
+                        hist["watchdog"].append({
+                            "target": f"{name} ({ip}:{port})", 
+                            "start": wd_state["down_time"].strftime("%Y-%m-%d %I:%M %p"),
+                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), 
+                            "duration_mins": int(elapsed)
+                        })
+                        save_history(hist)
 
-                    if state.get("watchdog_alert_sent"):
-                        send_pushover("✅ Network Restored", f"Connection to {ip}:{port} restored. Downtime: {int(elapsed)} mins.", priority=0)
-                
-                state["watchdog_online"] = True
-                state["watchdog_down_time"] = None
-                state["watchdog_alert_sent"] = False
-            else:
-                if state.get("watchdog_online", True):
-                    state["watchdog_online"] = False
-                    state["watchdog_down_time"] = datetime.now()
-                    state["watchdog_alert_sent"] = False
+                        if wd_state.get("alert_sent"):
+                            send_pushover("✅ Network Restored", f"{name} connection to {ip}:{port} restored.\nDowntime: {int(elapsed)} mins.", priority=0)
+                    
+                    wd_state["online"] = True
+                    wd_state["down_time"] = None
+                    wd_state["alert_sent"] = False
+                else:
+                    if wd_state.get("online", True):
+                        wd_state["online"] = False
+                        wd_state["down_time"] = datetime.now()
+                        wd_state["alert_sent"] = False
 
-                if state["watchdog_down_time"]:
-                    elapsed = (datetime.now() - state["watchdog_down_time"]).total_seconds() / 60
-                    if elapsed >= thresh and not state["watchdog_alert_sent"]:
-                        send_pushover("🌐 ⚠️ Network Offline", f"Connection to {ip}:{port} failed for >{thresh} mins. Home internet or VPN may be down.", priority=1)
-                        state["watchdog_alert_sent"] = True
+                    if wd_state["down_time"]:
+                        elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
+                        if elapsed >= thresh and not wd_state["alert_sent"]:
+                            send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
+                            wd_state["alert_sent"] = True
 
+        # Smart wait
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
-            if app_config.get("watchdog_ip") != ip: break
+            if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
 
 def poll_nut():
