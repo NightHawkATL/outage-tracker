@@ -6,12 +6,14 @@ import requests
 import logging
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from cryptography.fernet import Fernet
 
 app = Flask(__name__)
+# Set a massive cookie lifetime, we will strictly manage the real expiration server-side
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 CONFIG_FILE = "data/config.json"
@@ -32,7 +34,6 @@ with open(KEY_FILE, 'rb') as kf:
     key_bytes = kf.read()
     cipher_suite = Fernet(key_bytes)
 
-# Secure the Flask session using our generated key
 app.secret_key = key_bytes
 
 def load_config():
@@ -45,7 +46,7 @@ def load_config():
             cfg.setdefault("latitude", "")
             cfg.setdefault("longitude", "")
             cfg.setdefault("ts_authkey", "")
-            # Ensure Auth exists
+            cfg.setdefault("session_timeout", 24) # Default to 24 hours
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
                 cfg["admin_password"] = cipher_suite.encrypt(b"admin").decode('utf-8')
@@ -54,6 +55,7 @@ def load_config():
     config = {
         "admin_username": "admin",
         "admin_password": cipher_suite.encrypt(b"admin").decode('utf-8'),
+        "session_timeout": 24,
         "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
@@ -92,7 +94,17 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in'):
-            return redirect(url_for('login_page', next=request.url))
+            return redirect(url_for('login_page'))
+        
+        # Enforce Hard Server-Side Timeout
+        timeout_hours = int(app_config.get("session_timeout", 24))
+        if timeout_hours > 0:
+            login_time = session.get('login_time', 0)
+            if time.time() - login_time > (timeout_hours * 3600):
+                session.pop('logged_in', None)
+                session.pop('login_time', None)
+                return redirect(url_for('login_page', timeout=1))
+                
         return f(*args, **kwargs)
     return decorated_function
 
@@ -100,6 +112,9 @@ def login_required(f):
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     error = None
+    if request.args.get('timeout'):
+        error = "Your session has expired. Please log in again."
+        
     if request.method == "POST":
         username = request.form.get("username", "")
         password = request.form.get("password", "")
@@ -110,10 +125,12 @@ def login_page():
         try:
             cfg_pass = cipher_suite.decrypt(cfg_pass_enc.encode('utf-8')).decode('utf-8')
         except Exception:
-            cfg_pass = "admin" # Fallback if decryption fails
+            cfg_pass = "admin" 
 
         if username == cfg_user and password == cfg_pass:
+            session.permanent = True
             session['logged_in'] = True
+            session['login_time'] = time.time() # Record exact login timestamp
             return redirect(url_for('index'))
         else:
             error = "Invalid credentials. Please try again."
@@ -123,6 +140,7 @@ def login_page():
 @app.route("/logout")
 def logout():
     session.pop('logged_in', None)
+    session.pop('login_time', None)
     return redirect(url_for('login_page'))
 
 @app.route("/")
@@ -154,7 +172,6 @@ def config_page():
             if val.lower() == "clear": return ""
             return val
 
-        # Handle Auth Updates
         new_username = request.form.get("admin_username", "").strip()
         new_password = request.form.get("admin_password", "")
         if new_username:
@@ -172,6 +189,7 @@ def config_page():
             subprocess.run(["tailscale", "logout"])
 
         app_config.update({
+            "session_timeout": int(request.form.get("session_timeout", 24)),
             "company_name": request.form.get("company_name", "").strip(),
             "zip_code": request.form.get("zip_code", "").strip(),
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
