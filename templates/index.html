@@ -21,6 +21,7 @@
 <body>
     <div class="container" style="max-width: 1000px;">
         
+        <!-- Header -->
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
@@ -79,7 +80,7 @@
                     </div>
 
                     <!-- NEW: Dual-WAN Watchdog Panel -->
-                    {% set show_wd = config.watchdog_ip or config.watchdog_ip_2 or history.watchdog %}
+                    {% if config.watchdog_ip or config.watchdog_ip_2 %}
                     <hr class="my-4 border-secondary">
                     <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
                         <h5 class="text-info mb-3">Home Network Watchdog</h5>
