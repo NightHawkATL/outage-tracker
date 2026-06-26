@@ -159,12 +159,12 @@
             <!-- Home Network Watchdog -->
             <div class="card p-4 mb-4 border border-secondary">
                 <h4 class="text-info mb-3">Home Network Watchdog (Optional)</h4>
-                <p class="small text-muted mb-3">Continuously ping up to two devices on your home network to detect ISP or local network failures.</p>
+                <p class="small text-muted mb-3">Continuously ping up to two devices to detect ISP or local network failures. You can enter your home's Public IP, a Dynamic DNS hostname, or a secure Tailscale IP (e.g., 100.x.x.x).</p>
                 
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label">Primary Target IP / Hostname</label>
-                        <input type="text" name="watchdog_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip }}" placeholder="e.g. 100.x.x.x or MyPublicIP">
+                        <input type="text" name="watchdog_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip }}" placeholder="e.g., 100.112.x.x or myhome.ddns.net">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Port</label>
