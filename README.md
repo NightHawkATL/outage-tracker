@@ -22,11 +22,12 @@ If you already have a UPS, why do you need to poll the power company?
 
 * **Grid Monitoring (KUBRA API):** Natively supports tracking any major utility company that uses the KUBRA Storm Center platform (Georgia Power, Duke Energy, Alabama Power, FirstEnergy, Entergy) as well as Pacific Power.
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
+* **Dual-WAN Watchdog:** Continuously pings up to two IP addresses (like your home Public IP or a Tailscale node) to monitor your home internet connection for downtime, with independent alerting.
 * **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network.
 * **Zero-Knowledge Security:** Sensitive API tokens, VPN auth keys, and home coordinates are configured as "Write-Only" in the UI. Once saved, they are hidden from the frontend to protect your data.
 * **Live Connection Diagnostics:** The settings dashboard features real-time socket checks to visually verify if your NUT server and Tailscale network are connected.
 * **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
-* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage and UPS battery event so you can review your power stability over time.
+* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage, UPS battery event, and network downtime so you can review your infrastructure stability over time.
 
 ---
 
@@ -41,16 +42,16 @@ outage-tracker/
 ├── requirements.txt
 ├── app.py
 ├── entrypoint.sh      
-├── reset_auth.py
-├── auth_key/
+├── reset_auth.py      <-- Password reset tool
+├── auth_key/          <-- Auto-generated folder containing your secret decryption key
 ├── static/
-│   ├── favicon.ico    
-│   └── logo.svg       
+│   ├── favicon.ico    <-- Your browser tab icon
+│   └── logo.svg       <-- Your custom header logo
 └── templates/
     ├── config.html
     ├── history.html
     ├── index.html
-    └── login.html
+    └── login.html     <-- Secure login screen
 ```
 
 ---
@@ -117,21 +118,88 @@ To track your local power grid, you need to provide the direct JSON data URL fro
 
 <img width="2167" height="874" alt="Untitled-1" src="https://github.com/user-attachments/assets/bf009ac6-ee74-4ad2-a5df-2351c46a9941" />
 
+*(Optional: You can also paste the URL to your utility's main map and report pages to generate a clickable banner and button on your dashboard).*
+
 ### 3. Local UPS Settings (Optional)
 If you run a local NUT server, enter its IP and Port. 
 * Set **UPS Names** to `auto` to automatically fetch every UPS attached to the server, or list them manually (e.g., `nutdev1,nutdev2`).
 
-### 4. Mapbox Image Alerts (Optional)
+### 4. Home Network Watchdog (Optional)
+Continuously ping up to two devices to detect ISP or local network failures. You can enter your home's Public IP, a Dynamic DNS hostname, or a secure Tailscale IP (e.g., `100.x.x.x`). 
+* If your target goes offline longer than the configured threshold, a network downtime alert will be sent.
+* Configure the secondary failover target for multi-WAN setups.
+
+### 5. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
 * Copy your **Default Public Token** (`pk.eyJ1...`) from Mapbox.
 * Enter the Token, plus your exact home **Latitude** and **Longitude** in the Web UI.
 
-### 5. Pushover Integration
-Create a free account at Pushover.net and create an "Application" to get your API Token.
-* User Key: Found on your main Pushover dashboard.
-* API Token: Found under your specific Application's settings.
+### 6. Pushover Integration
+Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token. Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
 
-<img width="429" height="351" alt="pushover_test" src="https://github.com/user-attachments/assets/b8f364b7-cb07-4a82-80ff-dfa4945a35a5" />
+---
+
+## 📱 Pushover Notification Examples
+
+Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *30114*, and a UPS named *nutdev1* as examples):
+
+### ⚡ Grid Outage Events
+
+**Active Outage Alert** (Priority 1 - High)
+*Triggered when the utility company API reports an outage in your zip code that outlasts your configured threshold.*
+> **Title:** 🚨 Georgia Power Outage Alert  
+> **Message:**   
+> Power out in 30114 for >10 mins.  
+> Affected: 1245  
+> Est. Restoration: Today at 5:00 PM  
+> **Attachment:** 🗺️ *(A dark-themed Mapbox street map of your exact home coordinates)*
+
+**Grid Power Restored** (Priority 0 - Normal)
+*Triggered when the utility company API updates to show 0 customers affected in your zip code.*
+> **Title:** ✅ Georgia Power Power Restored  
+> **Message:**   
+> Restored in 30114!  
+> Outage lasted 112 mins.
+
+### 🔋 Local UPS Events
+
+**Critical Battery Alert** (Priority 1 - High)
+*Triggered immediately when your local UPS switches to "On Battery" (OB) and its estimated runtime drops below your configured minimum (e.g., 10 minutes).*
+> **Title:** ⚠️ CRITICAL: nutdev1 Low!  
+> **Message:**   
+> UPS 'nutdev1' on battery, 9 mins left.
+
+**UPS Power Restored** (Priority 0 - Normal)
+*Triggered when your UPS switches back to "On Line" (OL) grid power after an event.*
+> **Title:** 🔌 UPS nutdev1 Restored  
+> **Message:**   
+> Back on grid power.
+
+### 🌐 Watchdog Events
+
+**Network Offline** (Priority 1 - High)
+*Triggered when the watchdog fails to ping the target for your configured threshold limit.*
+> **Title:** 🌐 ⚠️ Network Offline  
+> **Message:**   
+> Primary WAN connection to 100.122.66.74:80 failed for >5 mins.
+
+**Network Restored** (Priority 0 - Normal)
+*Triggered when the network target becomes reachable again.*
+> **Title:** ✅ Network Restored  
+> **Message:**   
+> Primary WAN connection to 100.122.66.74:80 restored.  
+> Downtime: 45 mins.
+
+### 🔔 System Testing
+
+**Manual UI Test** (Priority 0 - Normal)
+*Triggered when you click the "Test Pushover Alert" button on your dashboard.*
+> **Title:** 🔔 Pushover Test  
+> **Message:**   
+> Configuration working perfectly. Here is your map!  
+> **Attachment:** 🗺️ *(Your generated Mapbox image)*
+
+> **A Note on Priorities:** Active Grid Outages, Critical UPS alerts, and Network Offline alerts are sent as **Priority 1**. In Pushover, this means the notification will play a sound and vibrate your phone **even if your phone is set to "Quiet Hours"**. The "Restored" and "Test" messages are sent as **Priority 0**, meaning they will deliver normally and won't wake you up in the middle of the night just to tell you the power came back on!
 
 ---
 
@@ -160,7 +228,7 @@ sudo ufw allow from 10.0.0.0/8 to any port 3493
 ```
 
 ### 3. The "Tailscale Route Hijack" Fix
-If local devices (like Home Assistant on VLAN B) suddenly lose access to your NUT server (on VLAN A) after installing Tailscale, you are likely experiencing **Asymmetric Routing**. The NUT server receives the local packet, but attempts to send the reply back *through* the Tailscale tunnel instead of your physical router.
+If local devices (like Home Assistant on VLAN 103) suddenly lose access to your NUT server (on VLAN 1) after installing Tailscale, you are likely experiencing **Asymmetric Routing**. The NUT server receives the local packet, but attempts to send the reply back *through* the Tailscale tunnel instead of your physical router.
 
 To fix this, disable route acceptance on the NUT server so it ignores Tailscale subnets and respects your physical router's routing table:
 ```bash
