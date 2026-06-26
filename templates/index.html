@@ -79,7 +79,7 @@
                     </div>
 
                     <!-- NEW: Dual-WAN Watchdog Panel -->
-                    {% if config.watchdog_ip or config.watchdog_ip_2 %}
+                    {% set show_wd = config.watchdog_ip or config.watchdog_ip_2 or history.watchdog %}
                     <hr class="my-4 border-secondary">
                     <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
                         <h5 class="text-info mb-3">Home Network Watchdog</h5>
