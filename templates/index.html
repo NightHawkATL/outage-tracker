@@ -21,12 +21,12 @@
 <body>
     <div class="container" style="max-width: 1000px;">
         
-        <!-- Updated Header -->
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
                 <span class="d-none d-sm-inline">Outage Tracker</span>
             </h2>
+            
             {% if config.ts_authkey %}
                 <div>
                     {% if "Connected" in ts_status %}
@@ -36,6 +36,7 @@
                     {% endif %}
                 </div>
             {% endif %}
+
             <div>
                 <a href="/history" class="btn btn-outline-info me-2">📜 History</a>
                 <a href="/config" class="btn btn-outline-light me-2">⚙️ Settings</a>
@@ -76,6 +77,26 @@
                         Last API Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span><br>
                         {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
                     </div>
+
+                    <!-- NEW: Network Watchdog Panel (Dynamically visible) -->
+                    {% if config.watchdog_ip %}
+                    <hr class="my-4 border-secondary">
+                    <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
+                        <h5 class="text-info mb-3">Home Network Watchdog</h5>
+                        {% if state.watchdog_online %}
+                            <h3 class="status-ok mb-2 fs-4">NETWORK ONLINE</h3>
+                            <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
+                        {% else %}
+                            <h3 class="status-outage mb-2 fs-4">NETWORK OFFLINE</h3>
+                            <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip }}:{{ config.watchdog_port }})</p>
+                            <p class="small text-muted mb-0">Downtime: {{ wd_duration }} mins</p>
+                            {% if state.watchdog_alert_sent %}
+                                <span class="badge bg-danger p-1 mt-2">Network Alert Sent</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
                 </div>
             </div>
 
