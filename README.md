@@ -129,6 +129,8 @@ Continuously ping up to two devices to detect ISP or local network failures. You
 * If your target goes offline longer than the configured threshold, a network downtime alert will be sent.
 * Configure the secondary failover target for multi-WAN setups.
 
+{New Image Here}
+
 ### 5. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
 * Copy your **Default Public Token** (`pk.eyJ1...`) from Mapbox.
