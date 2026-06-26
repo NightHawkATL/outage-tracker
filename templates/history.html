@@ -12,11 +12,11 @@
         .history-item { background-color: #2a2a2a; border-left: 4px solid; }
         .border-grid { border-color: #ff9800 !important; }
         .border-ups { border-color: #f44336 !important; }
+        .border-wd { border-color: #0dcaf0 !important; }
     </style>
 </head>
 <body>
     <div class="container" style="max-width: 1000px;">
-        <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
@@ -31,7 +31,6 @@
         
         <div class="row g-4 justify-content-center">
             
-            <!-- Grid History Column -->
             <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
                 <div class="card p-4 h-100">
                     <h5 class="text-warning text-center mb-4">⚡ Grid Outage Events</h5>
@@ -59,7 +58,6 @@
                 </div>
             </div>
 
-            <!-- UPS History Column -->
             {% if state.nut_enabled %}
             <div class="col-md-6">
                 <div class="card p-4 h-100">
@@ -88,8 +86,32 @@
                 </div>
             </div>
             {% endif %}
-
         </div>
+
+        {% if history.watchdog %}
+        <div class="row mt-4 justify-content-center">
+            <div class="{% if state.nut_enabled %}col-12{% else %}col-lg-8{% endif %}">
+                <div class="card p-4">
+                    <h5 class="text-info text-center mb-4">🌐 Network Downtime Events</h5>
+                    <div class="d-flex flex-column gap-3">
+                        {% for event in history.watchdog %}
+                            <div class="p-3 history-item border-wd rounded">
+                                <div class="d-flex justify-content-between">
+                                    <h6 class="mb-1 text-white">Target: {{ event.target }}</h6>
+                                    <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                </div>
+                                <div class="small text-secondary mt-1">
+                                    Offline: {{ event.start }}<br>
+                                    Restored: {{ event.end }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
     </div>
 </body>
 </html>
