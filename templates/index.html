@@ -128,7 +128,7 @@
         <div class="row mt-4 justify-content-center">
             <div class="{% if state.nut_enabled %}col-12{% else %}col-lg-8{% endif %}">
                 <a href="{{ config.map_url if config.map_url else '#' }}" target="_blank" class="text-decoration-none">
-                    <div class="card bg-dark text-white overflow-hidden map-banner" style="height: 150px;">
+                    <div class="card bg-dark text-white overflow-hidden map-banner" style="height: 180px;">
                         
                         {% if config.mapbox_token and state.alert_sent %}
                             <img src="{{ url_for('static', filename='outage_map.jpg') }}?t={{ state.last_check }}" alt="Mapbox Outage Map" style="opacity: 0.8;">
