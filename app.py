@@ -6,6 +6,8 @@ import requests
 import logging
 import json
 import subprocess
+import re
+import urllib.parse
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
@@ -14,6 +16,9 @@ from cryptography.fernet import Fernet
 app = Flask(__name__)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 CONFIG_FILE = "data/config.json"
 HISTORY_FILE = "data/history.json"
@@ -112,6 +117,40 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def auto_discover_api(map_url):
+    """Scrapes the Map URL in RAM to find the correct JSON API endpoint."""
+    if not map_url: return ""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        resp = requests.get(map_url, timeout=10, headers=headers)
+        resp.raise_for_status()
+        text = resp.text
+        
+        # 1. Look for KUBRA UUIDs
+        uuids = list(set(re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', text)))
+        for uid in uuids:
+            test_url = f"https://kubra.io/data/{uid}/public/thematic-1/thematic_areas.json"
+            try:
+                r = requests.get(test_url, timeout=5)
+                if r.status_code == 200 and "areas" in r.json():
+                    return test_url
+            except: pass
+        
+        # 2. Look for explicit .json endpoints (like Pacific Power)
+        json_links = list(set(re.findall(r'[\'"]([^\'"]+\.json)[\'"]', text)))
+        for link in json_links:
+            full_url = urllib.parse.urljoin(map_url, link)
+            try:
+                r = requests.get(full_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    if isinstance(data, dict) and ("zips" in data or "areas" in data):
+                        return full_url
+            except: pass
+    except Exception as e:
+        logging.error(f"Auto-discovery failed: {e}")
+    return ""
+
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     error = None
@@ -182,13 +221,25 @@ def config_page():
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
 
+        # Auto-Discover API URL if left blank
+        api_url = request.form.get("kubra_url", "").strip()
+        map_url = request.form.get("map_url", "").strip()
+        if not api_url and map_url:
+            logging.info(f"Attempting to auto-discover API URL from {map_url}...")
+            discovered = auto_discover_api(map_url)
+            if discovered:
+                api_url = discovered
+                logging.info(f"✅ Auto-discovered API URL: {api_url}")
+            else:
+                logging.warning("❌ Auto-discovery failed. Manual API entry required.")
+
         app_config.update({
             "session_timeout": int(request.form.get("session_timeout", 24)),
             "company_name": request.form.get("company_name", "").strip(),
             "zip_code": request.form.get("zip_code", "").strip(),
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
-            "kubra_url": request.form.get("kubra_url", "").strip(),
-            "map_url": request.form.get("map_url", "").strip(),
+            "kubra_url": api_url,
+            "map_url": map_url,
             "report_url": request.form.get("report_url", "").strip(),
             "nut_host": request.form.get("nut_host", "").strip(),
             "nut_port": int(request.form.get("nut_port", 3493)),
@@ -368,7 +419,6 @@ def poll_watchdog():
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
 
-        # Smart wait
         c_ip1 = app_config.get("watchdog_ip")
         c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
@@ -436,6 +486,35 @@ def poll_gp_outages():
         if url and zip_c:
             try:
                 req = requests.get(url, timeout=10)
+                
+                # --- AUTO-HEAL: If KUBRA rotated their UUID ---
+                if req.status_code == 404:
+                    map_url = app_config.get("map_url")
+                    old_uuid_search = re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', url)
+                    
+                    if map_url and old_uuid_search:
+                        logging.warning("Outage API returned 404. Attempting auto-heal...")
+                        old_uuid = old_uuid_search.group(0)
+                        map_req = requests.get(map_url, timeout=15)
+                        uuids = list(set(re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', map_req.text)))
+                        
+                        healed = False
+                        for test_uuid in uuids:
+                            if test_uuid == old_uuid: continue
+                            test_url = url.replace(old_uuid, test_uuid)
+                            test_req = requests.get(test_url, timeout=10)
+                            
+                            if test_req.status_code == 200:
+                                logging.info(f"✅ Successfully auto-healed KUBRA UUID to: {test_uuid}")
+                                app_config["kubra_url"] = test_url
+                                save_config(app_config)
+                                url = test_url
+                                req = test_req
+                                healed = True
+                                break
+                        if not healed:
+                            logging.error("❌ Auto-heal failed: No valid new UUIDs found.")
+                            
                 req.raise_for_status()
                 report_data = req.json()
                 state["last_check"] = datetime.now().strftime("%I:%M %p")
