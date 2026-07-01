@@ -17,18 +17,8 @@
         .map-banner:hover img { opacity: 0.6; }
     </style>
     
-    <!-- Smart Refresh Logic -->
-    {% set event_active = false %}
-    {% if state.is_outage %}{% set event_active = true %}{% endif %}
-    {% if state.nut_enabled and state.ups_data %}
-        {% for ups in state.ups_data.values() %}
-            {% if "OB" in ups.status %}{% set event_active = true %}{% endif %}
-        {% endfor %}
-    {% endif %}
-    {% if config.watchdog_ip and not state.watchdogs["1"].online %}{% set event_active = true %}{% endif %}
-    {% if config.watchdog_ip_2 and not state.watchdogs["2"].online %}{% set event_active = true %}{% endif %}
-
-    {% if event_active %}
+    <!-- Smart Refresh Logic: 30s during active events/discovery, 300s normally -->
+    {% if event_active or (state.last_check and "Discover" in state.last_check) or (state.last_check and "Heal" in state.last_check) %}
         <meta http-equiv="refresh" content="30">
     {% else %}
         <meta http-equiv="refresh" content="300">
@@ -72,8 +62,14 @@
                     <hr>
                     
                     {% if not config.kubra_url %}
-                        <h4 class="text-warning mt-4">Awaiting Configuration</h4>
-                        <p class="text-muted">Enter a Map URL in settings to auto-discover your tracking API.</p>
+                        {% if state.last_check and "Discover" in state.last_check %}
+                            <h4 class="text-info mt-4">🔍 Analyzing Map Data</h4>
+                            <p class="text-muted">Scanning {{ config.map_url }} for the correct API endpoints...</p>
+                            <div class="spinner-border text-info mt-2" role="status"></div>
+                        {% else %}
+                            <h4 class="text-warning mt-4">Awaiting Configuration</h4>
+                            <p class="text-muted">Enter a Map URL in settings to auto-discover your tracking API.</p>
+                        {% endif %}
                     {% elif state.is_outage %}
                         <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
                         <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
@@ -257,7 +253,8 @@
             let gpCheck = document.getElementById('gp-check');
             let nutCheck = document.getElementById('nut-check');
             
-            if ((gpCheck && gpCheck.innerText.includes("Pending")) || (nutCheck && nutCheck.innerText.includes("CONNECTING"))) {
+            // Only auto-reload if legitimately stuck connecting, not if waiting for API
+            if (nutCheck && nutCheck.innerText.includes("CONNECTING")) {
                 setTimeout(function() {
                     window.location.reload();
                 }, 2000);
