@@ -5,10 +5,10 @@ Outage Tracker is a lightweight, self-hosted Docker application designed to moni
 While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a built-in mesh VPN to monitor your local battery runtime. 
 
 Main Page:  
-(https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783746-ac7818ee-59e5-4169-9c6d-9328e63182f1)
+<img width="900" height="867" alt="main-filled" src="https://github.com/user-attachments/assets/9b4e9d51-b12d-49bd-9fa4-32c2e49dd82c" />
 
-History Logs:  
-![tracker history](https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783790-d0de298e-c792-4136-9196-df70772065bb)
+History Logs:
+<img width="1185" height="297" alt="history" src="https://github.com/user-attachments/assets/6352d5e8-81d2-455e-a98b-2e7dda628b5c" />
 
 ## 🤔 Why multi-layer tracking? (Grid, UPS, & Network)
 
@@ -108,7 +108,7 @@ On your first boot, you will be met with a secure login screen.
 
 The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
-![tracker config3](https://github.com/NightHawkATL/outage-tracker/assets/8395658/613183053-df532001-004e-4d92-bcc0-23fe26c6edea)
+<img width="806" height="2368" alt="settings-blank2" src="https://github.com/user-attachments/assets/2331e2ee-3fd3-4e9d-a342-22be3c6bec4b" />
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
@@ -131,7 +131,7 @@ The app will instantly scan the website in the background, bypass any iframes, l
 5. The exact moment the map shades the zip codes, a new file will appear at the bottom of your Network tab (usually named `thematic_areas.json` or `listCA.json`).
 6. Click that file, copy its **Request URL**, and paste it into the UI.
 
-![Untitled-1](https://github.com/NightHawkATL/outage-tracker/assets/8395658/608016108-bf009ac6-ee74-4ad2-a5df-2351c46a9941)
+<img width="2175" height="888" alt="outage-map" src="https://github.com/user-attachments/assets/41f174f2-020f-43ee-b3ff-abbf2457491b" />
 
 ### 3. Local UPS Settings (Optional)
 If you run a local NUT server, enter its IP and Port. 
@@ -153,12 +153,13 @@ Create a free account at [Pushover.net](https://pushover.net/) and create an "Ap
 * **API Token:** Found by clicking your specific Application under "Your Applications".
 
 Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
-{IMAGE HERE}
+<img width="609" height="258" alt="pushover-test" src="https://github.com/user-attachments/assets/6919576a-4215-44c9-a3d8-603968ffcc3e" />
+
 ---
 
 ## 📱 Pushover Notification Examples
 
-Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *30114*, and a UPS named *nutdev1* as examples):
+Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *12345*, and a UPS named *nutdev1* as examples):
 
 ### ⚡ Grid Outage Events
 
@@ -166,7 +167,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the utility company API reports an outage in your zip code that outlasts your configured threshold.*
 > **Title:** 🚨 Georgia Power Outage Alert  
 > **Message:**   
-> Power out in 30114 for >10 mins.  
+> Power out in 12345 for >10 mins.  
 > Affected: 1245  
 > Est. Restoration: Today at 5:00 PM  
 > **Attachment:** 🗺️ *(A dark-themed Mapbox street map of your exact home coordinates)*
@@ -175,7 +176,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the utility company API updates to show 0 customers affected in your zip code.*
 > **Title:** ✅ Georgia Power Power Restored  
 > **Message:**   
-> Restored in 30114!  
+> Restored in 12345!  
 > Outage lasted 112 mins.
 
 ### 🔋 Local UPS Events
@@ -198,13 +199,13 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the watchdog fails to ping the target for your configured threshold limit.*
 > **Title:** 🌐 ⚠️ Network Offline  
 > **Message:**   
-> Primary WAN connection to 100.122.66.74:80 failed for >5 mins.
+> Primary WAN connection to 100.120.120.122:80 failed for >5 mins.
 
 **Network Restored** (Priority 0 - Normal)
 *Triggered when the network target becomes reachable again.*
 > **Title:** ✅ Network Restored  
 > **Message:**   
-> Primary WAN connection to 100.122.66.74:80 restored.  
+> Primary WAN connection to 100.120.120.122:80 restored.  
 > Downtime: 45 mins.
 
 ### 🔔 System Testing
