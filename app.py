@@ -117,8 +117,8 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def auto_discover_api(map_url):
-    """Scrapes the Map URL in RAM to find the correct JSON API endpoint."""
+def auto_discover_api(map_url, zip_code):
+    """Scrapes map URL & iframes entirely in RAM to find the correct JSON API endpoint."""
     if not map_url: return ""
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -126,7 +126,17 @@ def auto_discover_api(map_url):
         resp.raise_for_status()
         text = resp.text
         
-        # 1. Look for KUBRA UUIDs
+        # Dig into iframes to find embedded maps (like Georgia Power's wrapper)
+        iframes = re.findall(r'<iframe.*?src=[\'"]([^\'"]+)[\'"]', text, re.IGNORECASE)
+        for iframe in iframes:
+            if not iframe.startswith('http'):
+                iframe = urllib.parse.urljoin(map_url, iframe)
+            try:
+                i_resp = requests.get(iframe, timeout=10, headers=headers)
+                text += " " + i_resp.text
+            except: pass
+            
+        # 1. Search for KUBRA UUIDs
         uuids = list(set(re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', text)))
         for uid in uuids:
             test_url = f"https://kubra.io/data/{uid}/public/thematic-1/thematic_areas.json"
@@ -136,15 +146,19 @@ def auto_discover_api(map_url):
                     return test_url
             except: pass
         
-        # 2. Look for explicit .json endpoints (like Pacific Power)
+        # 2. Search for explicit JSON endpoints (Pacific Power)
         json_links = list(set(re.findall(r'[\'"]([^\'"]+\.json)[\'"]', text)))
         for link in json_links:
-            full_url = urllib.parse.urljoin(map_url, link)
+            full_url = urllib.parse.urljoin(map_url, link) if not link.startswith('http') else link
             try:
                 r = requests.get(full_url, timeout=5)
                 if r.status_code == 200:
                     data = r.json()
-                    if isinstance(data, dict) and ("zips" in data or "areas" in data):
+                    if "zips" in data:
+                        for z in data["zips"]:
+                            if str(z.get("zipCode", "")) == zip_code:
+                                return full_url
+                    elif "areas" in data:
                         return full_url
             except: pass
     except Exception as e:
@@ -179,15 +193,25 @@ def logout():
 @login_required
 def index():
     duration = 0
+    event_active = False
+    
+    # Check if any event is active to trigger the rapid 30s UI refresh
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
+        event_active = True
         
     wd_durations = {"1": 0, "2": 0}
     for w_id in ["1", "2"]:
         if not state["watchdogs"][w_id]["online"] and state["watchdogs"][w_id]["down_time"]:
             wd_durations[w_id] = int((datetime.now() - state["watchdogs"][w_id]["down_time"]).total_seconds() / 60)
-        
-    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status())
+            event_active = True
+            
+    if state["nut_enabled"]:
+        for ups in state["ups_data"].values():
+            if "OB" in ups.get("status", ""):
+                event_active = True
+                
+    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active)
 
 @app.route("/history")
 @login_required
@@ -221,25 +245,13 @@ def config_page():
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
 
-        # Auto-Discover API URL if left blank
-        api_url = request.form.get("kubra_url", "").strip()
-        map_url = request.form.get("map_url", "").strip()
-        if not api_url and map_url:
-            logging.info(f"Attempting to auto-discover API URL from {map_url}...")
-            discovered = auto_discover_api(map_url)
-            if discovered:
-                api_url = discovered
-                logging.info(f"✅ Auto-discovered API URL: {api_url}")
-            else:
-                logging.warning("❌ Auto-discovery failed. Manual API entry required.")
-
         app_config.update({
             "session_timeout": int(request.form.get("session_timeout", 24)),
             "company_name": request.form.get("company_name", "").strip(),
             "zip_code": request.form.get("zip_code", "").strip(),
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
-            "kubra_url": api_url,
-            "map_url": map_url,
+            "kubra_url": request.form.get("kubra_url", "").strip(),
+            "map_url": request.form.get("map_url", "").strip(),
             "report_url": request.form.get("report_url", "").strip(),
             "nut_host": request.form.get("nut_host", "").strip(),
             "nut_port": int(request.form.get("nut_port", 3493)),
@@ -264,6 +276,9 @@ def config_page():
         for w in ["1", "2"]:
             state["watchdogs"][w]["online"] = True
             state["watchdogs"][w]["alert_sent"] = False
+        
+        # Reset API check status to ensure discovery triggers smoothly
+        state["last_check"] = "Pending..."
         return redirect(url_for('config_page'))
         
     return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=get_nut_status())
@@ -479,42 +494,43 @@ def poll_nut():
 def poll_gp_outages():
     while True:
         url = app_config.get("kubra_url")
+        map_url = app_config.get("map_url")
         zip_c = app_config.get("zip_code")
-        thresh = app_config.get("threshold_mins")
+        thresh = app_config.get("threshold_mins", 45)
         company = app_config.get("company_name", "Utility")
 
+        # Background Auto-Discovery Loop
+        if not url and map_url and zip_c:
+            state["last_check"] = "🔍 Discovering API..."
+            discovered = auto_discover_api(map_url, zip_c)
+            if discovered:
+                app_config["kubra_url"] = discovered
+                save_config(app_config)
+                url = discovered
+                state["last_check"] = "API Discovered! Starting poll..."
+            else:
+                state["error_msg"] = "Auto-discovery failed. Check Map URL."
+                state["last_check"] = "Failed"
+        
+        # Standard Polling Loop
         if url and zip_c:
             try:
                 req = requests.get(url, timeout=10)
                 
                 # --- AUTO-HEAL: If KUBRA rotated their UUID ---
-                if req.status_code == 404:
-                    map_url = app_config.get("map_url")
-                    old_uuid_search = re.search(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', url)
-                    
-                    if map_url and old_uuid_search:
-                        logging.warning("Outage API returned 404. Attempting auto-heal...")
-                        old_uuid = old_uuid_search.group(0)
-                        map_req = requests.get(map_url, timeout=15)
-                        uuids = list(set(re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', map_req.text)))
+                if req.status_code == 404 and map_url:
+                    state["last_check"] = "🔧 Auto-Healing Link..."
+                    logging.warning("API returned 404. Attempting auto-heal...")
+                    discovered = auto_discover_api(map_url, zip_c)
+                    if discovered:
+                        app_config["kubra_url"] = discovered
+                        save_config(app_config)
+                        url = discovered
+                        req = requests.get(url, timeout=10)
+                        logging.info(f"✅ Successfully auto-healed API to: {url}")
+                    else:
+                        raise ValueError("Auto-heal failed. Map website structure might have changed.")
                         
-                        healed = False
-                        for test_uuid in uuids:
-                            if test_uuid == old_uuid: continue
-                            test_url = url.replace(old_uuid, test_uuid)
-                            test_req = requests.get(test_url, timeout=10)
-                            
-                            if test_req.status_code == 200:
-                                logging.info(f"✅ Successfully auto-healed KUBRA UUID to: {test_uuid}")
-                                app_config["kubra_url"] = test_url
-                                save_config(app_config)
-                                url = test_url
-                                req = test_req
-                                healed = True
-                                break
-                        if not healed:
-                            logging.error("❌ Auto-heal failed: No valid new UUIDs found.")
-                            
                 req.raise_for_status()
                 report_data = req.json()
                 state["last_check"] = datetime.now().strftime("%I:%M %p")
@@ -581,6 +597,7 @@ def poll_gp_outages():
                 state["error_msg"] = str(e)
                 logging.error(f"API Error: {e}")
 
+        # Smart wait: Break instantly if the URL is updated in settings
         for _ in range(300): 
             if app_config.get("kubra_url") != url: break
             time.sleep(1)
