@@ -5,7 +5,7 @@ Outage Tracker is a lightweight, self-hosted Docker application designed to moni
 While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a built-in mesh VPN to monitor your local battery runtime. 
 
 Main Page:  
-![tracker main](https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783746-ac7818ee-59e5-4169-9c6d-9328e63182f1)
+(https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783746-ac7818ee-59e5-4169-9c6d-9328e63182f1)
 
 History Logs:  
 ![tracker history](https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783790-d0de298e-c792-4136-9196-df70772065bb)
@@ -148,8 +148,12 @@ To receive rich map images of your neighborhood attached to your Pushover alerts
 * Enter the Token, plus your exact home **Latitude** and **Longitude** in the Web UI.
 
 ### 6. Pushover Integration
-Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token. Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
+Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token. You will need two specific keys for the Web UI:
+* **User Key:** Found on your main Pushover dashboard immediately after logging in.
+* **API Token:** Found by clicking your specific Application under "Your Applications".
 
+Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
+{IMAGE HERE}
 ---
 
 ## 📱 Pushover Notification Examples
