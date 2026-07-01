@@ -263,3 +263,6 @@ sudo tailscale up --accept-routes=false
 
 ## 📝 License
 MIT License. Feel free to fork, modify, and expand!
+
+# Disclaimer
+**This is a current work in progress. It was coded with the help of AI to get the base project running with my ideas.**
