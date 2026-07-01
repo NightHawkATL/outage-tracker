@@ -1,14 +1,14 @@
 # ⚡ Outage Tracker
 
-Outage Tracker is a lightweight, self-hosted Docker application designed to monitor both your local home rack's battery health and your neighborhood's power grid simultaneously. 
+Outage Tracker is a lightweight, self-hosted Docker application designed to monitor your neighborhood's power grid, your local home rack's battery health, and your home internet connection simultaneously. 
 
 While standard UPS notification scripts run locally and fail if your home internet goes down, Outage Tracker is designed to be hosted externally (like on a Cloud VPS). It queries your utility company's API to track grid failures in your area, while tunneling into your Network UPS Tools (NUT) server via a built-in mesh VPN to monitor your local battery runtime. 
 
-Main Page:</br>
-<img width="882" height="860" alt="image" src="https://github.com/user-attachments/assets/350b7acd-7df0-4845-a035-66fbcf162655" />
+Main Page:  
+![tracker main](https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783746-ac7818ee-59e5-4169-9c6d-9328e63182f1)
 
-History Logs:</br>
-<img width="1186" height="294" alt="image" src="https://github.com/user-attachments/assets/e347e3f5-a1d9-4f90-a432-f626b852dfb6" />
+History Logs:  
+![tracker history](https://github.com/NightHawkATL/outage-tracker/assets/8395658/612783790-d0de298e-c792-4136-9196-df70772065bb)
 
 ## 🤔 Why multi-layer tracking? (Grid, UPS, & Network)
 
@@ -19,15 +19,15 @@ If you already have a UPS, why do you need to poll the power company and your in
 3. **The "Local Rack" View:** Meanwhile, the NUT integration tells you exactly what is happening to your physical hardware. If the power drops, Outage Tracker monitors the exact battery percentage and runtime of your UPS array, sending critical alerts when your servers are about to die.
 4. **The "ISP Outage" View (Watchdog):** Sometimes the power is perfectly fine, but your ISP goes down. The built-in Network Watchdog continuously pings your home network's IP or Tailscale node from the outside. If it drops, your VPS immediately alerts you that your home internet is offline, completely independent of the power grid!
 
-
 ## ✨ Features
 
 * **Grid Monitoring (KUBRA API):** Natively supports tracking any major utility company that uses the KUBRA Storm Center platform (Georgia Power, Duke Energy, Alabama Power, FirstEnergy, Entergy) as well as Pacific Power.
+* **Auto-Discovery & Auto-Heal:** Simply provide the main outage map URL, and the app will automatically hunt down the hidden JSON APIs in the background. If the utility company rotates their URLs (which KUBRA does periodically), the app detects the `404` failure and instantly auto-heals its own configuration without you lifting a finger!
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
 * **Dual-WAN Watchdog:** Continuously pings up to two IP addresses (like your home Public IP or a Tailscale node) to monitor your home internet connection for downtime, with independent alerting.
+* **Smart UI Refresh:** To save network bandwidth, the dashboard quietly refreshes every 5 minutes when everything is normal. The exact second a grid outage or UPS event is detected, it shifts into high gear and refreshes every 30 seconds for real-time monitoring.
 * **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network.
-* **Zero-Knowledge Security:** Sensitive API tokens, VPN auth keys, and home coordinates are configured as "Write-Only" in the UI. Once saved, they are hidden from the frontend to protect your data.
-* **Live Connection Diagnostics:** The settings dashboard features real-time socket checks to visually verify if your NUT server and Tailscale network are connected.
+* **Zero-Knowledge Security:** Sensitive API tokens, VPN auth keys, and home coordinates are configured as "Write-Only" in the UI. Once saved, they are encrypted and hidden from the frontend to protect your data.
 * **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
 * **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage, UPS battery event, and network downtime so you can review your infrastructure stability over time.
 
@@ -60,7 +60,13 @@ outage-tracker/
 
 ## 🚀 Installation
 
-Deploy via Docker Compose. The application uses a single persistent volume to save your settings, Tailscale identity, and history logs.
+First, clone this repository to your Docker host and navigate into the folder:
+```bash
+git clone https://github.com/NightHawkATL/outage-tracker.git
+cd outage-tracker
+```
+
+Deploy via Docker Compose. The application uses persistent volumes to save your settings, Tailscale identity, encryption keys, and history logs so they survive container updates.
 
 ### `compose.yaml`
 
@@ -102,7 +108,7 @@ On your first boot, you will be met with a secure login screen.
 
 The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
-<img width="806" height="2368" alt="configuration" src="https://github.com/user-attachments/assets/3e7e7598-76c2-41e3-b8d2-e656b10d0d57" />
+![tracker config3](https://github.com/NightHawkATL/outage-tracker/assets/8395658/613183053-df532001-004e-4d92-bcc0-23fe26c6edea)
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
@@ -110,17 +116,22 @@ If you are running this on a Cloud VPS, **do not** port-forward your home router
 2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
 
 ### 2. Utility Grid Settings
-To track your local power grid, you need to provide the direct JSON data URL from your utility company's map. Finding your Zip Code endpoint is easy:
+To track your local power grid, the app uses an **Auto-Discovery engine**:
+1. Enter your **Zip Code**.
+2. Paste the URL to your utility's main outage map (e.g., `https://outagemap.georgiapower.com/`) into the **Map Website URL** field. 
+3. Leave the **Outage API JSON URL** field entirely blank, and hit **Save Configuration**.
+
+The app will instantly scan the website in the background, bypass any iframes, locate the hidden JSON API endpoints, and save them automatically!
+
+**Manual Fallback:** If auto-discovery fails, you can easily find the API URL yourself:
 1. Open your power company's outage map in your desktop browser.
 2. Press **F12** to open Developer Tools and navigate to the **Network** tab.
 3. In the Network filter box, type `json`.
 4. On the actual Map UI, find the **Map Legend / Menu** and change the view mode from "Clusters" (circles) to **"View by Zip/City"** or **"Zip Code"**.
 5. The exact moment the map shades the zip codes, a new file will appear at the bottom of your Network tab (usually named `thematic_areas.json` or `listCA.json`).
-6. Click that file, copy its **Request URL**, and paste it into the Web UI settings.
+6. Click that file, copy its **Request URL**, and paste it into the UI.
 
-<img width="2167" height="874" alt="Untitled-1" src="https://github.com/user-attachments/assets/bf009ac6-ee74-4ad2-a5df-2351c46a9941" />
-
-*(Optional: You can also paste the URL to your utility's main map and report pages to generate a clickable banner and button on your dashboard).*
+![Untitled-1](https://github.com/NightHawkATL/outage-tracker/assets/8395658/608016108-bf009ac6-ee74-4ad2-a5df-2351c46a9941)
 
 ### 3. Local UPS Settings (Optional)
 If you run a local NUT server, enter its IP and Port. 
@@ -139,13 +150,11 @@ To receive rich map images of your neighborhood attached to your Pushover alerts
 ### 6. Pushover Integration
 Create a free account at [Pushover.net](https://pushover.net/) and create an "Application" to get your API Token. Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
 
-<img width="429" height="351" alt="pushover_test" src="https://github.com/user-attachments/assets/b8f364b7-cb07-4a82-80ff-dfa4945a35a5" />
-
 ---
 
 ## 📱 Pushover Notification Examples
 
-Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *30001*, and a UPS named *nutdev1* as examples):
+Depending on your configuration and the events that occur, Outage Tracker will push rich notifications directly to your device. Here is exactly what those alerts will look like (using *Georgia Power*, Zip Code *30114*, and a UPS named *nutdev1* as examples):
 
 ### ⚡ Grid Outage Events
 
@@ -153,7 +162,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the utility company API reports an outage in your zip code that outlasts your configured threshold.*
 > **Title:** 🚨 Georgia Power Outage Alert  
 > **Message:**   
-> Power out in 30001 for >10 mins.  
+> Power out in 30114 for >10 mins.  
 > Affected: 1245  
 > Est. Restoration: Today at 5:00 PM  
 > **Attachment:** 🗺️ *(A dark-themed Mapbox street map of your exact home coordinates)*
@@ -162,7 +171,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the utility company API updates to show 0 customers affected in your zip code.*
 > **Title:** ✅ Georgia Power Power Restored  
 > **Message:**   
-> Restored in 30001!  
+> Restored in 30114!  
 > Outage lasted 112 mins.
 
 ### 🔋 Local UPS Events
@@ -185,13 +194,13 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 *Triggered when the watchdog fails to ping the target for your configured threshold limit.*
 > **Title:** 🌐 ⚠️ Network Offline  
 > **Message:**   
-> Primary WAN connection to 100.123.123.12:80 failed for >5 mins.
+> Primary WAN connection to 100.122.66.74:80 failed for >5 mins.
 
 **Network Restored** (Priority 0 - Normal)
 *Triggered when the network target becomes reachable again.*
 > **Title:** ✅ Network Restored  
 > **Message:**   
-> Primary WAN connection to 100.123.123.12:80 restored.  
+> Primary WAN connection to 100.122.66.74:80 restored.  
 > Downtime: 45 mins.
 
 ### 🔔 System Testing
@@ -228,7 +237,7 @@ Run the following on your NUT server to allow traffic:
 sudo ufw allow in on tailscale0 to any port 3493
 
 # Allow internal cross-VLAN traffic (e.g., from Home Assistant)
-sudo ufw allow from 10.0.0.0/8 to any port 3493 # Make sure to change this to your local IP subnet (172.16.0.0/12 or 192.168.0.0/16)
+sudo ufw allow from 10.0.0.0/8 to any port 3493
 ```
 
 ### 3. The "Tailscale Route Hijack" Fix
@@ -249,6 +258,3 @@ sudo tailscale up --accept-routes=false
 
 ## 📝 License
 MIT License. Feel free to fork, modify, and expand!
-
-# Disclaimer
-**This is a current work in progress. It was coded with the help of AI to get the base project running with my ideas.**
