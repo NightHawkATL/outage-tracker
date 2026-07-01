@@ -112,7 +112,7 @@ The app will initially load as a "Blank Slate". Click the **⚙️ Settings** bu
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
-1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
+1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys){:target="_blank"}.
 2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
 
 ### 2. Utility Grid Settings
