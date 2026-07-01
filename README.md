@@ -154,6 +154,7 @@ Create a free account at [Pushover.net](https://pushover.net/) and create an "Ap
 * **API Token:** Found by clicking your specific Application under "Your Applications".
 
 Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
+
 <img width="609" height="258" alt="pushover-test" src="https://github.com/user-attachments/assets/6919576a-4215-44c9-a3d8-603968ffcc3e" />
 
 ---
