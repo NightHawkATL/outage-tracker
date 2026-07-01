@@ -17,7 +17,7 @@
         .map-banner:hover img { opacity: 0.6; }
     </style>
     
-    <!-- Smart Refresh Logic: 30s during active events/discovery, 300s normally -->
+    <!-- Smart Refresh Logic -->
     {% if event_active or (state.last_check and "Discover" in state.last_check) or (state.last_check and "Heal" in state.last_check) %}
         <meta http-equiv="refresh" content="30">
     {% else %}
@@ -66,6 +66,9 @@
                             <h4 class="text-info mt-4">🔍 Analyzing Map Data</h4>
                             <p class="text-muted">Scanning {{ config.map_url }} for the correct API endpoints...</p>
                             <div class="spinner-border text-info mt-2" role="status"></div>
+                        {% elif state.discovery_failed %}
+                            <h4 class="text-danger mt-4">Discovery Failed</h4>
+                            <p class="text-muted">We couldn't automatically find the API. Please enter the Outage API JSON URL manually via Settings.</p>
                         {% else %}
                             <h4 class="text-warning mt-4">Awaiting Configuration</h4>
                             <p class="text-muted">Enter a Map URL in settings to auto-discover your tracking API.</p>
@@ -253,7 +256,6 @@
             let gpCheck = document.getElementById('gp-check');
             let nutCheck = document.getElementById('nut-check');
             
-            // Only auto-reload if legitimately stuck connecting, not if waiting for API
             if (nutCheck && nutCheck.innerText.includes("CONNECTING")) {
                 setTimeout(function() {
                     window.location.reload();
