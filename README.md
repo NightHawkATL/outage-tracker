@@ -144,6 +144,7 @@ Continuously ping up to two devices to detect ISP or local network failures. You
 
 ### 5. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
+* Go to [Mapbox.com](https://www.mapbox.com/) and create a free account.
 * Copy your **Default Public Token** (`pk.eyJ1...`) from Mapbox.
 * Enter the Token, plus your exact home **Latitude** and **Longitude** in the Web UI.
 
