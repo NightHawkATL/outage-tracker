@@ -55,6 +55,12 @@ def load_config():
             cfg.setdefault("watchdog_ip_2", "")
             cfg.setdefault("watchdog_port_2", 80)
             cfg.setdefault("watchdog_threshold_2", 5)
+            # Secondary NUT defaults
+            cfg.setdefault("nut_host_2", "")
+            cfg.setdefault("nut_port_2", 3493)
+            cfg.setdefault("nut_ups_names_2", "auto")
+            cfg.setdefault("ups_min_runtime_2", 10)
+            
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
                 cfg["admin_password"] = cipher_suite.encrypt(b"admin").decode('utf-8')
@@ -65,6 +71,7 @@ def load_config():
         "session_timeout": 24, "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
+        "nut_host_2": "", "nut_port_2": 3493, "nut_ups_names_2": "auto", "ups_min_runtime_2": 10,
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
@@ -95,8 +102,9 @@ app_config = load_config()
 state = {
     "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
-    "discovery_failed": False, # Prevents infinite Auto-Discovery loops
-    "nut_enabled": bool(app_config.get("nut_host")), "ups_data": {}, "nut_last_check": None, "nut_error": None,
+    "discovery_failed": False,
+    "nut_enabled": bool(app_config.get("nut_host") or app_config.get("nut_host_2")), 
+    "ups_data": {}, "nut_last_check": None, "nut_error": None,
     "watchdogs": {
         "1": {"online": True, "down_time": None, "alert_sent": False},
         "2": {"online": True, "down_time": None, "alert_sent": False}
@@ -119,7 +127,6 @@ def login_required(f):
     return decorated_function
 
 def auto_discover_api(map_url, zip_code):
-    """Scrapes map URL, iframes, and scripts entirely in RAM to find the API endpoint."""
     if not map_url: return ""
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -127,7 +134,6 @@ def auto_discover_api(map_url, zip_code):
         resp.raise_for_status()
         text = resp.text
         
-        # 1. Dig into iframes
         iframes = re.findall(r'<iframe.*?src=[\'"]([^\'"]+)[\'"]', text, re.IGNORECASE)
         for iframe in iframes:
             if not iframe.startswith('http'):
@@ -137,10 +143,8 @@ def auto_discover_api(map_url, zip_code):
                 text += " " + i_resp.text
             except: pass
 
-        # 2. Dig into <script> tags (UUIDs are usually compiled into the JS bundle)
         scripts = re.findall(r'<script.*?src=[\'"]([^\'"]+\.js[^\'"]*)[\'"]', text, re.IGNORECASE)
         for script in scripts:
-            # Only fetch local scripts to save time
             if not script.startswith('http') or urllib.parse.urlparse(script).netloc == urllib.parse.urlparse(map_url).netloc:
                 if not script.startswith('http'):
                     script = urllib.parse.urljoin(map_url, script)
@@ -149,17 +153,14 @@ def auto_discover_api(map_url, zip_code):
                     text += " " + s_resp.text
                 except: pass
             
-        # 3. Search for KUBRA UUIDs
         uuids = list(set(re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', text, re.IGNORECASE)))
         for uid in uuids:
             test_url = f"https://kubra.io/data/{uid.lower()}/public/thematic-1/thematic_areas.json"
             try:
                 r = requests.get(test_url, timeout=5)
-                if r.status_code == 200 and "areas" in r.json():
-                    return test_url
+                if r.status_code == 200 and "areas" in r.json(): return test_url
             except: pass
         
-        # 4. Search for explicit JSON endpoints
         json_links = list(set(re.findall(r'[\'"]([^\'"]+\.json)[\'"]', text)))
         for link in json_links:
             full_url = urllib.parse.urljoin(map_url, link) if not link.startswith('http') else link
@@ -167,11 +168,13 @@ def auto_discover_api(map_url, zip_code):
                 r = requests.get(full_url, timeout=5)
                 if r.status_code == 200:
                     data = r.json()
-                    if "zips" in data or "areas" in data:
+                    if "zips" in data:
+                        for z in data["zips"]:
+                            if str(z.get("zipCode", "")) == zip_code: return full_url
+                    elif "areas" in data:
                         return full_url
             except: pass
-    except Exception as e:
-        logging.error(f"Auto-discovery failed: {e}")
+    except Exception as e: logging.error(f"Auto-discovery failed: {e}")
     return ""
 
 @app.route("/login", methods=["GET", "POST"])
@@ -204,7 +207,6 @@ def index():
     duration = 0
     event_active = False
     
-    # Check if any event is active to trigger the rapid 30s UI refresh
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
         event_active = True
@@ -217,8 +219,7 @@ def index():
             
     if state["nut_enabled"]:
         for ups in state["ups_data"].values():
-            if "OB" in ups.get("status", ""):
-                event_active = True
+            if "OB" in ups.get("status", ""): event_active = True
                 
     return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active)
 
@@ -254,41 +255,65 @@ def config_page():
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
 
+        api_url = request.form.get("kubra_url", "").strip()
+        map_url = request.form.get("map_url", "").strip()
+        zip_c = request.form.get("zip_code", "").strip()
+        
+        if not api_url and map_url and zip_c:
+            logging.info(f"Attempting to auto-discover API URL from {map_url}...")
+            discovered = auto_discover_api(map_url, zip_c)
+            if discovered:
+                api_url = discovered
+                logging.info(f"✅ Auto-discovered API URL: {api_url}")
+            else:
+                logging.warning("❌ Auto-discovery failed.")
+
         app_config.update({
             "session_timeout": int(request.form.get("session_timeout", 24)),
             "company_name": request.form.get("company_name", "").strip(),
-            "zip_code": request.form.get("zip_code", "").strip(),
+            "zip_code": zip_c,
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
-            "kubra_url": request.form.get("kubra_url", "").strip(),
-            "map_url": request.form.get("map_url", "").strip(),
+            "kubra_url": api_url,
+            "map_url": map_url,
             "report_url": request.form.get("report_url", "").strip(),
+            
             "nut_host": request.form.get("nut_host", "").strip(),
             "nut_port": int(request.form.get("nut_port", 3493)),
             "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(),
             "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
+            
+            "nut_host_2": request.form.get("nut_host_2", "").strip(),
+            "nut_port_2": int(request.form.get("nut_port_2", 3493)),
+            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(),
+            "ups_min_runtime_2": int(request.form.get("ups_min_runtime_2", 10)),
+            
             "watchdog_ip": request.form.get("watchdog_ip", "").strip(),
             "watchdog_port": int(request.form.get("watchdog_port", 80)),
             "watchdog_threshold": int(request.form.get("watchdog_threshold", 5)),
             "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(),
             "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
             "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
+            
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
         })
         save_config(app_config)
-        state["nut_enabled"] = bool(app_config["nut_host"])
+        state["nut_enabled"] = bool(app_config["nut_host"] or app_config["nut_host_2"])
         state["is_outage"] = False
         state["outage_start_time"] = None
         state["alert_sent"] = False
         state["etr"] = "Unavailable"
-        state["discovery_failed"] = False # Reset discovery state
+        state["discovery_failed"] = False
         for w in ["1", "2"]:
             state["watchdogs"][w]["online"] = True
             state["watchdogs"][w]["alert_sent"] = False
+        state["last_check"] = "Pending..."
         return redirect(url_for('config_page'))
         
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=get_nut_status())
+    nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
+    nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
+    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2)
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -310,9 +335,7 @@ def get_ts_status():
     except Exception: pass
     return ts_status
 
-def get_nut_status():
-    host = app_config.get("nut_host")
-    port = app_config.get("nut_port", 3493)
+def get_nut_status(host, port):
     if not host: return "Not Configured"
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -352,10 +375,8 @@ def send_pushover(title, message, priority=1, include_map=False):
         return True
     except Exception: return False
 
-def fetch_nut_data():
-    host = app_config.get("nut_host")
-    port = app_config.get("nut_port", 3493)
-    names = app_config.get("nut_ups_names", "auto")
+def fetch_nut_data(host, port, names):
+    if not host: return None
     results = {}
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -389,6 +410,76 @@ def fetch_nut_data():
                 results[ups_name] = vars_dict
         return results
     except: return None
+
+def poll_nut():
+    while True:
+        c_host1 = app_config.get("nut_host")
+        c_port1 = app_config.get("nut_port", 3493)
+        c_names1 = app_config.get("nut_ups_names", "auto")
+        c_thresh1 = app_config.get("ups_min_runtime", 10)
+
+        c_host2 = app_config.get("nut_host_2")
+        c_port2 = app_config.get("nut_port_2", 3493)
+        c_names2 = app_config.get("nut_ups_names_2", "auto")
+        c_thresh2 = app_config.get("ups_min_runtime_2", 10)
+
+        errors = []
+
+        def process_data(multi_ups_data, threshold):
+            for ups_name, vars_dict in multi_ups_data.items():
+                if ups_name not in state["ups_data"]:
+                    state["ups_data"][ups_name] = {"alert_sent": False, "is_ob": False, "ob_start_time": None, "min_charge": 100}
+                
+                ups_state = state["ups_data"][ups_name]
+                ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
+                ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
+                ups_state["runtime_mins"] = int(float(vars_dict.get("battery.runtime", 0))) // 60
+                
+                if "OB" in ups_state["status"]:
+                    if not ups_state["is_ob"]:
+                        ups_state["is_ob"] = True
+                        ups_state["ob_start_time"] = datetime.now()
+                        ups_state["min_charge"] = ups_state["charge"]
+                    else:
+                        if ups_state["charge"] < ups_state["min_charge"]:
+                            ups_state["min_charge"] = ups_state["charge"]
+
+                    if ups_state["runtime_mins"] <= threshold and not ups_state["alert_sent"]:
+                        send_pushover(title=f"⚠️ CRITICAL: {ups_name} Low!", message=f"UPS '{ups_name}' on battery, {ups_state['runtime_mins']} mins left.", priority=1)
+                        ups_state["alert_sent"] = True
+
+                elif "OL" in ups_state["status"]:
+                    if ups_state["is_ob"] and ups_state["ob_start_time"]:
+                        elapsed = (datetime.now() - ups_state["ob_start_time"]).total_seconds() / 60
+                        hist = load_history()
+                        hist["ups"].append({
+                            "ups_name": ups_name, "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
+                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed), "min_charge": ups_state["min_charge"]
+                        })
+                        save_history(hist)
+                        ups_state["is_ob"] = False
+                        ups_state["ob_start_time"] = None
+                        
+                    if ups_state["alert_sent"]:
+                        send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
+                    ups_state["alert_sent"] = False
+
+        if c_host1:
+            data1 = fetch_nut_data(c_host1, c_port1, c_names1)
+            if data1 is not None: process_data(data1, c_thresh1)
+            else: errors.append(f"Primary NUT ({c_host1}) offline")
+
+        if c_host2:
+            data2 = fetch_nut_data(c_host2, c_port2, c_names2)
+            if data2 is not None: process_data(data2, c_thresh2)
+            else: errors.append(f"Secondary NUT ({c_host2}) offline")
+
+        state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
+        state["nut_error"] = " | ".join(errors) if errors else None
+        
+        for _ in range(30):
+            if app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2: break
+            time.sleep(1)
 
 def poll_watchdog():
     while True:
@@ -447,57 +538,6 @@ def poll_watchdog():
             if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
 
-def poll_nut():
-    while True:
-        current_host = app_config.get("nut_host")
-        if current_host:
-            multi_ups_data = fetch_nut_data()
-            state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
-            if multi_ups_data is not None:
-                state["nut_error"] = None
-                for ups_name, vars_dict in multi_ups_data.items():
-                    if ups_name not in state["ups_data"]:
-                        state["ups_data"][ups_name] = {"alert_sent": False, "is_ob": False, "ob_start_time": None, "min_charge": 100}
-                    
-                    ups_state = state["ups_data"][ups_name]
-                    ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
-                    ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
-                    ups_state["runtime_mins"] = int(float(vars_dict.get("battery.runtime", 0))) // 60
-                    
-                    if "OB" in ups_state["status"]:
-                        if not ups_state["is_ob"]:
-                            ups_state["is_ob"] = True
-                            ups_state["ob_start_time"] = datetime.now()
-                            ups_state["min_charge"] = ups_state["charge"]
-                        else:
-                            if ups_state["charge"] < ups_state["min_charge"]:
-                                ups_state["min_charge"] = ups_state["charge"]
-
-                        if ups_state["runtime_mins"] <= app_config["ups_min_runtime"] and not ups_state["alert_sent"]:
-                            send_pushover(title=f"⚠️ CRITICAL: {ups_name} Low!", message=f"UPS '{ups_name}' on battery, {ups_state['runtime_mins']} mins left.", priority=1)
-                            ups_state["alert_sent"] = True
-
-                    elif "OL" in ups_state["status"]:
-                        if ups_state["is_ob"] and ups_state["ob_start_time"]:
-                            elapsed = (datetime.now() - ups_state["ob_start_time"]).total_seconds() / 60
-                            hist = load_history()
-                            hist["ups"].append({
-                                "ups_name": ups_name, "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
-                                "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed), "min_charge": ups_state["min_charge"]
-                            })
-                            save_history(hist)
-                            ups_state["is_ob"] = False
-                            ups_state["ob_start_time"] = None
-                            
-                        if ups_state["alert_sent"]:
-                            send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
-                        ups_state["alert_sent"] = False
-            else:
-                state["nut_error"] = f"Failed to connect to NUT Server"
-        for _ in range(30):
-            if app_config.get("nut_host") != current_host: break
-            time.sleep(1)
-
 def poll_gp_outages():
     while True:
         url = app_config.get("kubra_url")
@@ -506,7 +546,6 @@ def poll_gp_outages():
         thresh = app_config.get("threshold_mins", 45)
         company = app_config.get("company_name", "Utility")
 
-        # Background Auto-Discovery Loop
         if not url and map_url and zip_c:
             if not state.get("discovery_failed"):
                 state["last_check"] = "🔍 Discovering API..."
@@ -522,12 +561,9 @@ def poll_gp_outages():
                     state["last_check"] = "Failed"
                     state["discovery_failed"] = True
         
-        # Standard Polling Loop
         if url and zip_c:
             try:
                 req = requests.get(url, timeout=10)
-                
-                # --- AUTO-HEAL: If KUBRA rotated their UUID ---
                 if req.status_code == 404 and map_url:
                     state["last_check"] = "🔧 Auto-Healing Link..."
                     logging.warning("API returned 404. Attempting auto-heal...")
