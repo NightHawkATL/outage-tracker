@@ -177,8 +177,9 @@
                         </div>
                     {% endif %}
                     <div class="mt-4 text-center text-muted small">
-                        Alert triggers below {{ config.ups_min_runtime }} mins<br>
+                        Alert triggers based on server configuration.<br>
                         Last NUT Sync: {{ state.nut_last_check if state.nut_last_check else 'Pending...' }}
+                        {% if state.nut_error %}<br><span class="text-danger">{{ state.nut_error }}</span>{% endif %}
                     </div>
                 </div>
             </div>
