@@ -28,15 +28,28 @@
 
         <form method="POST" action="/config">
             
-            <!-- Auth Settings -->
+            <!-- Auth & System Settings -->
             <div class="card p-4 mb-4 border border-info">
-                <h4 class="text-info mb-3">Admin Account</h4>
+                <h4 class="text-info mb-3">System & Admin Settings</h4>
                 <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <label class="form-label">Username</label>
                         <input type="text" name="admin_username" class="form-control bg-dark text-white border-secondary" value="{{ config.admin_username }}" required>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <label class="form-label">System Timezone</label>
+                        <input list="tz_list" name="timezone" class="form-control bg-dark text-white border-secondary" value="{{ config.timezone }}" required>
+                        <datalist id="tz_list">
+                            <option value="America/New_York">
+                            <option value="America/Chicago">
+                            <option value="America/Denver">
+                            <option value="America/Los_Angeles">
+                            <option value="America/Phoenix">
+                            <option value="Europe/London">
+                            <option value="UTC">
+                        </datalist>
+                    </div>
+                    <div class="col-md-4">
                         <label class="form-label">Auto-Logout Timer</label>
                         <select name="session_timeout" class="form-select bg-dark text-white border-secondary">
                             <option value="1" {% if config.session_timeout == 1 %}selected{% endif %}>1 Hour</option>
@@ -47,14 +60,15 @@
                             <option value="0" {% if config.session_timeout == 0 %}selected{% endif %}>Disabled (Permanent)</option>
                         </select>
                     </div>
-                    <div class="col-md-6">
+                    
+                    <div class="col-md-6 mt-4">
                         <label class="form-label">New Password (Leave blank to keep)</label>
                         <input type="password" name="admin_password" id="pwd1" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
                         <div class="progress mt-2">
                             <div id="pwd-strength-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-6 mt-4">
                         <label class="form-label">Confirm New Password</label>
                         <input type="password" id="pwd2" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
                         <div id="match-warning" class="text-danger small mt-1" style="display:none;">Passwords do not match!</div>
