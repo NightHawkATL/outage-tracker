@@ -85,8 +85,6 @@ services:
     cap_add:
       - NET_ADMIN                   # Required for Tailscale networking
       - NET_RAW
-    environment:
-      - TZ=America/New_York         # Change this to your local timezone
 ```
 
 Start the container:
