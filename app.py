@@ -325,18 +325,7 @@ def config_page():
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
-        state["is_outage"] = False
-        state["outage_start_time"] = None
-        state["alert_sent"] = False
-        state["etr"] = "Unavailable"
-        state["discovery_failed"] = False
-        for w in ["1", "2"]:
-            state["watchdogs"][w]["online"] = True
-            state["watchdogs"][w]["alert_sent"] = False
-        for s in ["1", "2"]:
-            state["snmp"][s]["online"] = False
-            state["snmp"][s]["uptime_s"] = None
-        state["last_check"] = "Pending..."
+        
         return redirect(url_for('config_page'))
         
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
@@ -458,7 +447,6 @@ def poll_snmp():
 
             if ip:
                 try:
-                    # UPDATED FLAG FROM -O qv TO -O tv
                     res = subprocess.run(["snmpget", "-v2c", "-c", comm, "-O", "tv", "-t", "3", "-r", "1", ip, "1.3.6.1.2.1.1.3.0"], capture_output=True, text=True)
                     s_state["last_check"] = datetime.now().strftime("%I:%M:%S %p")
                     
@@ -625,7 +613,10 @@ def poll_nut():
         state["nut_error"] = " | ".join(errors) if errors else None
         
         for _ in range(30):
-            if app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2: break
+            if (app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2 or
+                app_config.get("nut_port") != c_port1 or app_config.get("nut_port_2") != c_port2 or
+                app_config.get("nut_ups_names") != c_names1 or app_config.get("nut_ups_names_2") != c_names2):
+                break
             time.sleep(1)
 
 def poll_gp_outages():
@@ -737,7 +728,7 @@ def poll_gp_outages():
                 logging.error(f"API Error: {e}")
 
         for _ in range(300): 
-            if app_config.get("kubra_url") != url: break
+            if app_config.get("kubra_url") != url or app_config.get("zip_code") != zip_c: break
             time.sleep(1)
 
 if __name__ == "__main__":
