@@ -137,6 +137,46 @@
                 </div>
             </div>
 
+            <!-- Hardware SNMP Monitoring -->
+            <div class="card p-4 mb-4 border border-secondary">
+                <h4 class="text-info mb-3">Hardware SNMP Monitoring (Optional)</h4>
+                <p class="small text-muted mb-3">Ensure your switch or router never reboots unnoticed. Enter the local IP and SNMPv2c Community String of up to two devices to track their Uptime.</p>
+                
+                <h6 class="text-muted text-uppercase mb-2">Primary Device</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Display Name</label>
+                        <input type="text" name="snmp_name" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Target IP</label>
+                        <input type="text" name="snmp_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip }}" placeholder="e.g. 10.0.1.2">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Community String</label>
+                        <input type="text" name="snmp_community" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community }}" placeholder="public">
+                    </div>
+                </div>
+                
+                <hr class="border-secondary my-3">
+                
+                <h6 class="text-muted text-uppercase mb-2">Secondary Device</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label text-muted">Display Name</label>
+                        <input type="text" name="snmp_name_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name_2 }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-muted">Target IP</label>
+                        <input type="text" name="snmp_ip_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip_2 }}" placeholder="Optional">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label text-muted">Community String</label>
+                        <input type="text" name="snmp_community_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community_2 }}">
+                    </div>
+                </div>
+            </div>
+
             <!-- Local NUT Settings -->
             <div class="card p-4 mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
