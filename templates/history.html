@@ -13,6 +13,7 @@
         .border-grid { border-color: #ff9800 !important; }
         .border-ups { border-color: #f44336 !important; }
         .border-wd { border-color: #0dcaf0 !important; }
+        .border-snmp { border-color: #9c27b0 !important; }
     </style>
 </head>
 <body>
@@ -33,12 +34,16 @@
         <!-- Dynamic Layout Logic -->
         {% set show_nut = state.nut_enabled %}
         {% set show_wd = config.watchdog_ip or config.watchdog_ip_2 or history.watchdog %}
+        {% set show_snmp = config.snmp_ip or config.snmp_ip_2 or history.snmp %}
 
         {% set active_panels = 1 %}
         {% if show_nut %}{% set active_panels = active_panels + 1 %}{% endif %}
         {% if show_wd %}{% set active_panels = active_panels + 1 %}{% endif %}
+        {% if show_snmp %}{% set active_panels = active_panels + 1 %}{% endif %}
 
-        {% if active_panels == 3 %}
+        {% if active_panels == 4 %}
+            {% set col_class = 'col-md-6' %}
+        {% elif active_panels == 3 %}
             {% set col_class = 'col-lg-4 col-md-6' %}
         {% elif active_panels == 2 %}
             {% set col_class = 'col-md-6' %}
@@ -124,6 +129,35 @@
                                     <div class="small text-secondary mt-1">
                                         Offline: {{ event.start }}<br>
                                         Restored: {{ event.end }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- SNMP Hardware Column -->
+            {% if show_snmp %}
+            <div class="{{ col_class }}">
+                <div class="card p-4 h-100">
+                    <h5 class="text-center mb-4" style="color: #9c27b0;">🔄 Hardware Reboot Events</h5>
+                    {% if not history.snmp %}
+                        <p class="text-center text-muted">No hardware reboots recorded.</p>
+                    {% else %}
+                        <div class="d-flex flex-column gap-3">
+                            {% for event in history.snmp %}
+                                <div class="p-3 history-item border-snmp rounded">
+                                    <div class="d-flex justify-content-between">
+                                        <h6 class="mb-1 text-white text-break">{{ event.name }}</h6>
+                                    </div>
+                                    <div class="small text-muted mb-1">
+                                        Prev Uptime: <strong class="text-danger">{{ event.old_uptime }}</strong>
+                                    </div>
+                                    <div class="small text-secondary">
+                                        Rebooted: {{ event.time }}<br>
+                                        IP: {{ event.ip }}
                                     </div>
                                 </div>
                             {% endfor %}
