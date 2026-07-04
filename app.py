@@ -29,6 +29,11 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
 
+# --- Force Tailscale Routing Fix on Boot ---
+try:
+    subprocess.run(["tailscale", "set", "--accept-routes=true"], check=False)
+except: pass
+
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'wb') as kf: kf.write(Fernet.generate_key())
 
@@ -320,7 +325,7 @@ def config_page():
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
         })
         save_config(app_config)
-        state["nut_enabled"] = bool(app_config["nut_host"] or app_config["nut_host_2"])
+        state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
         state["is_outage"] = False
         state["outage_start_time"] = None
         state["alert_sent"] = False
@@ -486,9 +491,6 @@ def poll_snmp():
 
 def poll_watchdog():
     while True:
-        c_ip1 = app_config.get("watchdog_ip")
-        c_ip2 = app_config.get("watchdog_ip_2")
-        
         for w_id in ["1", "2"]:
             suffix = "" if w_id == "1" else "_2"
             ip = app_config.get(f"watchdog_ip{suffix}")
@@ -538,6 +540,8 @@ def poll_watchdog():
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
 
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
             if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
