@@ -66,8 +66,6 @@ def load_config():
             cfg.setdefault("nut_port_2", 3493)
             cfg.setdefault("nut_ups_names_2", "auto")
             cfg.setdefault("ups_min_runtime_2", 10)
-            
-            # Blank SNMP Name Defaults
             cfg.setdefault("snmp_ip", "")
             cfg.setdefault("snmp_name", "")
             cfg.setdefault("snmp_community", "public")
@@ -327,18 +325,7 @@ def config_page():
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
-        state["is_outage"] = False
-        state["outage_start_time"] = None
-        state["alert_sent"] = False
-        state["etr"] = "Unavailable"
-        state["discovery_failed"] = False
-        for w in ["1", "2"]:
-            state["watchdogs"][w]["online"] = True
-            state["watchdogs"][w]["alert_sent"] = False
-        for s in ["1", "2"]:
-            state["snmp"][s]["online"] = False
-            state["snmp"][s]["uptime_s"] = None
-        state["last_check"] = "Pending..."
+        
         return redirect(url_for('config_page'))
         
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
@@ -445,6 +432,10 @@ def poll_snmp():
     while True:
         c_ip1 = app_config.get("snmp_ip")
         c_ip2 = app_config.get("snmp_ip_2")
+        c_n1 = app_config.get("snmp_name")
+        c_n2 = app_config.get("snmp_name_2")
+        c_c1 = app_config.get("snmp_community")
+        c_c2 = app_config.get("snmp_community_2")
         
         for s_id in ["1", "2"]:
             suffix = "" if s_id == "1" else "_2"
@@ -487,13 +478,18 @@ def poll_snmp():
                 s_state["uptime_s"] = None
                 
         for _ in range(300):
-            if app_config.get("snmp_ip") != c_ip1 or app_config.get("snmp_ip_2") != c_ip2: break
+            if (app_config.get("snmp_ip") != c_ip1 or app_config.get("snmp_ip_2") != c_ip2 or
+                app_config.get("snmp_name") != c_n1 or app_config.get("snmp_name_2") != c_n2 or
+                app_config.get("snmp_community") != c_c1 or app_config.get("snmp_community_2") != c_c2):
+                break
             time.sleep(1)
 
 def poll_watchdog():
     while True:
         c_ip1 = app_config.get("watchdog_ip")
+        c_port1 = app_config.get("watchdog_port")
         c_ip2 = app_config.get("watchdog_ip_2")
+        c_port2 = app_config.get("watchdog_port_2")
         
         for w_id in ["1", "2"]:
             suffix = "" if w_id == "1" else "_2"
@@ -545,7 +541,9 @@ def poll_watchdog():
                             wd_state["alert_sent"] = True
 
         for _ in range(60):
-            if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
+            if (app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2 or
+                app_config.get("watchdog_port") != c_port1 or app_config.get("watchdog_port_2") != c_port2):
+                break
             time.sleep(1)
 
 def poll_nut():
@@ -615,7 +613,10 @@ def poll_nut():
         state["nut_error"] = " | ".join(errors) if errors else None
         
         for _ in range(30):
-            if app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2: break
+            if (app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2 or
+                app_config.get("nut_port") != c_port1 or app_config.get("nut_port_2") != c_port2 or
+                app_config.get("nut_ups_names") != c_names1 or app_config.get("nut_ups_names_2") != c_names2):
+                break
             time.sleep(1)
 
 def poll_gp_outages():
@@ -727,7 +728,7 @@ def poll_gp_outages():
                 logging.error(f"API Error: {e}")
 
         for _ in range(300): 
-            if app_config.get("kubra_url") != url: break
+            if app_config.get("kubra_url") != url or app_config.get("zip_code") != zip_c: break
             time.sleep(1)
 
 if __name__ == "__main__":
