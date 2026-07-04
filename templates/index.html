@@ -53,7 +53,7 @@
         
         <div class="row g-4 justify-content-center">
             <!-- Utility Card -->
-            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
+            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
                 <div class="card p-4 text-center">
                     <h5 class="text-info">
                         {% if config.company_name %}{{ config.company_name }} Area{% else %}Utility Area{% endif %}
@@ -141,9 +141,12 @@
                 </div>
             </div>
 
-            <!-- Local UPS Array Card -->
-            {% if state.nut_enabled %}
-            <div class="col-md-6">
+            <!-- Hardware Card Column -->
+            {% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}
+            <div class="col-md-6 d-flex flex-column gap-4">
+                
+                <!-- Local UPS Array Card -->
+                {% if state.nut_enabled %}
                 <div class="card p-4">
                     <h5 class="text-center text-muted">Local UPS Systems</h5>
                     <hr>
@@ -182,6 +185,46 @@
                         {% if state.nut_error %}<br><span class="text-danger">{{ state.nut_error }}</span>{% endif %}
                     </div>
                 </div>
+                {% endif %}
+
+                <!-- SNMP Hardware Monitor -->
+                {% if config.snmp_ip or config.snmp_ip_2 %}
+                <div class="card p-4">
+                    <h5 class="text-center text-muted">Hardware Infrastructure</h5>
+                    <hr>
+                    <div class="d-flex flex-column gap-3 mt-2">
+                        {% for s_id in ["1", "2"] %}
+                            {% set ip = config.snmp_ip if s_id == "1" else config.snmp_ip_2 %}
+                            {% set name = config.snmp_name if s_id == "1" else config.snmp_name_2 %}
+                            {% set s_data = state.snmp[s_id] %}
+                            
+                            {% if ip %}
+                                <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h5 class="mb-0 text-info">{{ name }}</h5>
+                                        {% if s_data.online %}
+                                            <span class="badge bg-success fs-6">ONLINE</span>
+                                        {% else %}
+                                            <span class="badge bg-danger fs-6">OFFLINE</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small">
+                                        {% if s_data.online %}
+                                            Uptime: <strong>{{ format_uptime(s_data.uptime_s) }}</strong>
+                                        {% else %}
+                                            <span class="text-muted">Device unreachable ({{ ip }})</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    <div class="mt-4 text-center text-muted small">
+                        Last SNMP Poll: {{ state.snmp["1"].last_check if state.snmp["1"].last_check else 'Pending...' }}
+                    </div>
+                </div>
+                {% endif %}
+
             </div>
             {% endif %}
         </div>
@@ -189,7 +232,7 @@
         <!-- Map Banner Row -->
         {% if config.map_url or config.mapbox_token %}
         <div class="row mt-4 justify-content-center">
-            <div class="{% if state.nut_enabled %}col-12{% else %}col-lg-8{% endif %}">
+            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-12{% else %}col-lg-8{% endif %}">
                 <a href="{{ config.map_url if config.map_url else '#' }}" target="_blank" class="text-decoration-none">
                     <div class="card bg-dark text-white overflow-hidden map-banner" style="height: 160px;">
                         
@@ -218,14 +261,14 @@
         <!-- Actions Row -->
         <div class="row mt-3 g-3 justify-content-center">
             {% if config.report_url %}
-            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-4{% endif %}">
+            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-md-6{% else %}col-lg-4{% endif %}">
                 <a href="{{ config.report_url }}" target="_blank" class="btn btn-primary w-100 p-3 fw-bold">
                     📢 Report an Outage
                 </a>
             </div>
             {% endif %}
             
-            <div class="{% if state.nut_enabled %}col-md-6{% else %}col-lg-4{% endif %}">
+            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-md-6{% else %}col-lg-4{% endif %}">
                 <button onclick="testPushover()" id="pushTestBtn" class="btn btn-outline-info w-100 p-3 fw-bold">
                     🔔 Test Pushover Alert
                 </button>
