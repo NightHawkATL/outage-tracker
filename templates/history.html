@@ -17,9 +17,9 @@
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 1200px;">
+    <div class="container" style="max-width: 1400px;">
         <!-- Header -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
                 <span class="d-none d-sm-inline">Outage Tracker History</span>
@@ -42,7 +42,7 @@
         {% if show_snmp %}{% set active_panels = active_panels + 1 %}{% endif %}
 
         {% if active_panels == 4 %}
-            {% set col_class = 'col-md-6' %}
+            {% set col_class = 'col-xl-3 col-lg-6' %}
         {% elif active_panels == 3 %}
             {% set col_class = 'col-lg-4 col-md-6' %}
         {% elif active_panels == 2 %}
@@ -53,114 +53,178 @@
 
         <div class="row g-4 justify-content-center">
             
-            <!-- Grid History Column -->
+            <!-- 1. Grid History Column -->
             <div class="{{ col_class }}">
                 <div class="card p-4 h-100">
-                    <h5 class="text-warning text-center mb-4">⚡ Grid Outage Events</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="text-warning mb-0">⚡ Grid Outage Events</h5>
+                        {% if history.grid|length > 2 %}
+                        <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#collapseGrid" role="button" onclick="this.innerText = this.innerText == 'View More' ? 'View Less' : 'View More';">View More</a>
+                        {% endif %}
+                    </div>
                     {% if not history.grid %}
-                        <p class="text-center text-muted">No historical outages recorded.</p>
+                        <p class="text-center text-muted mt-3">No historical outages recorded.</p>
                     {% else %}
                         <div class="d-flex flex-column gap-3">
-                            {% for event in history.grid %}
+                            {% for event in history.grid[:2] %}
                                 <div class="p-3 history-item border-grid rounded">
                                     <div class="d-flex justify-content-between">
                                         <h6 class="mb-1 text-white">{{ event.company }} (Zip: {{ event.zip }})</h6>
                                         <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
                                     </div>
-                                    <div class="small text-muted mb-1">
-                                        Max Affected: <strong>{{ event.max_affected }}</strong>
-                                    </div>
-                                    <div class="small text-secondary">
-                                        Started: {{ event.start }}<br>
-                                        Ended: {{ event.end }}
-                                    </div>
+                                    <div class="small text-muted mb-1">Max Affected: <strong>{{ event.max_affected }}</strong></div>
+                                    <div class="small text-secondary">Started: {{ event.start }}<br>Ended: {{ event.end }}</div>
                                 </div>
                             {% endfor %}
+                            {% if history.grid|length > 2 %}
+                            <div class="collapse" id="collapseGrid">
+                                <div class="d-flex flex-column gap-3">
+                                {% for event in history.grid[2:] %}
+                                    <div class="p-3 history-item border-grid rounded">
+                                        <div class="d-flex justify-content-between">
+                                            <h6 class="mb-1 text-white">{{ event.company }} (Zip: {{ event.zip }})</h6>
+                                            <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                        </div>
+                                        <div class="small text-muted mb-1">Max Affected: <strong>{{ event.max_affected }}</strong></div>
+                                        <div class="small text-secondary">Started: {{ event.start }}<br>Ended: {{ event.end }}</div>
+                                    </div>
+                                {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
             </div>
 
-            <!-- UPS History Column -->
+            <!-- 2. UPS History Column -->
             {% if show_nut %}
             <div class="{{ col_class }}">
                 <div class="card p-4 h-100">
-                    <h5 class="text-danger text-center mb-4">🔋 UPS "On Battery" Events</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="text-danger mb-0">🔋 UPS "On Battery" Events</h5>
+                        {% if history.ups|length > 2 %}
+                        <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#collapseUps" role="button" onclick="this.innerText = this.innerText == 'View More' ? 'View Less' : 'View More';">View More</a>
+                        {% endif %}
+                    </div>
                     {% if not history.ups %}
-                        <p class="text-center text-muted">No battery events recorded.</p>
+                        <p class="text-center text-muted mt-3">No battery events recorded.</p>
                     {% else %}
                         <div class="d-flex flex-column gap-3">
-                            {% for event in history.ups %}
+                            {% for event in history.ups[:2] %}
                                 <div class="p-3 history-item border-ups rounded">
                                     <div class="d-flex justify-content-between">
                                         <h6 class="mb-1 text-white">{{ event.ups_name }}</h6>
                                         <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
                                     </div>
-                                    <div class="small text-muted mb-1">
-                                        Battery Lowest Point: <strong class="text-danger">{{ event.min_charge }}%</strong>
-                                    </div>
-                                    <div class="small text-secondary">
-                                        Started: {{ event.start }}<br>
-                                        Ended: {{ event.end }}
-                                    </div>
+                                    <div class="small text-muted mb-1">Battery Lowest Point: <strong class="text-danger">{{ event.min_charge }}%</strong></div>
+                                    <div class="small text-secondary">Started: {{ event.start }}<br>Ended: {{ event.end }}</div>
                                 </div>
                             {% endfor %}
+                            {% if history.ups|length > 2 %}
+                            <div class="collapse" id="collapseUps">
+                                <div class="d-flex flex-column gap-3">
+                                {% for event in history.ups[2:] %}
+                                    <div class="p-3 history-item border-ups rounded">
+                                        <div class="d-flex justify-content-between">
+                                            <h6 class="mb-1 text-white">{{ event.ups_name }}</h6>
+                                            <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                        </div>
+                                        <div class="small text-muted mb-1">Battery Lowest Point: <strong class="text-danger">{{ event.min_charge }}%</strong></div>
+                                        <div class="small text-secondary">Started: {{ event.start }}<br>Ended: {{ event.end }}</div>
+                                    </div>
+                                {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
             </div>
             {% endif %}
 
-            <!-- Watchdog History Column -->
+            <!-- 3. Watchdog History Column -->
             {% if show_wd %}
             <div class="{{ col_class }}">
                 <div class="card p-4 h-100">
-                    <h5 class="text-info text-center mb-4">🌐 Network Downtime Events</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="text-info mb-0">🌐 Network Downtime Events</h5>
+                        {% if history.watchdog|length > 2 %}
+                        <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#collapseWd" role="button" onclick="this.innerText = this.innerText == 'View More' ? 'View Less' : 'View More';">View More</a>
+                        {% endif %}
+                    </div>
                     {% if not history.watchdog %}
-                        <p class="text-center text-muted">No downtime events recorded.</p>
+                        <p class="text-center text-muted mt-3">No downtime events recorded.</p>
                     {% else %}
                         <div class="d-flex flex-column gap-3">
-                            {% for event in history.watchdog %}
+                            {% for event in history.watchdog[:2] %}
                                 <div class="p-3 history-item border-wd rounded">
                                     <div class="d-flex justify-content-between">
                                         <h6 class="mb-1 text-white text-break">Target: {{ event.target }}</h6>
                                         <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
                                     </div>
-                                    <div class="small text-secondary mt-1">
-                                        Offline: {{ event.start }}<br>
-                                        Restored: {{ event.end }}
-                                    </div>
+                                    <div class="small text-secondary mt-1">Offline: {{ event.start }}<br>Restored: {{ event.end }}</div>
                                 </div>
                             {% endfor %}
+                            {% if history.watchdog|length > 2 %}
+                            <div class="collapse" id="collapseWd">
+                                <div class="d-flex flex-column gap-3">
+                                {% for event in history.watchdog[2:] %}
+                                    <div class="p-3 history-item border-wd rounded">
+                                        <div class="d-flex justify-content-between">
+                                            <h6 class="mb-1 text-white text-break">Target: {{ event.target }}</h6>
+                                            <span class="badge bg-secondary">{{ event.duration_mins }} mins</span>
+                                        </div>
+                                        <div class="small text-secondary mt-1">Offline: {{ event.start }}<br>Restored: {{ event.end }}</div>
+                                    </div>
+                                {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
             </div>
             {% endif %}
 
-            <!-- SNMP Hardware Column -->
+            <!-- 4. SNMP Hardware Column -->
             {% if show_snmp %}
             <div class="{{ col_class }}">
                 <div class="card p-4 h-100">
-                    <h5 class="text-center mb-4" style="color: #9c27b0;">🔄 Hardware Reboot Events</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="mb-0" style="color: #9c27b0;">🔄 Hardware Reboots</h5>
+                        {% if history.snmp|length > 2 %}
+                        <a class="text-muted small text-decoration-none" data-bs-toggle="collapse" href="#collapseSnmp" role="button" onclick="this.innerText = this.innerText == 'View More' ? 'View Less' : 'View More';">View More</a>
+                        {% endif %}
+                    </div>
                     {% if not history.snmp %}
-                        <p class="text-center text-muted">No hardware reboots recorded.</p>
+                        <p class="text-center text-muted mt-3">No hardware reboots recorded.</p>
                     {% else %}
                         <div class="d-flex flex-column gap-3">
-                            {% for event in history.snmp %}
+                            {% for event in history.snmp[:2] %}
                                 <div class="p-3 history-item border-snmp rounded">
                                     <div class="d-flex justify-content-between">
                                         <h6 class="mb-1 text-white text-break">{{ event.name }}</h6>
                                     </div>
-                                    <div class="small text-muted mb-1">
-                                        Prev Uptime: <strong class="text-danger">{{ event.old_uptime }}</strong>
-                                    </div>
-                                    <div class="small text-secondary">
-                                        Rebooted: {{ event.time }}<br>
-                                        IP: {{ event.ip }}
-                                    </div>
+                                    <div class="small text-muted mb-1">Prev Uptime: <strong class="text-danger">{{ event.old_uptime }}</strong></div>
+                                    <div class="small text-secondary">Rebooted: {{ event.time }}<br>IP: {{ event.ip }}</div>
                                 </div>
                             {% endfor %}
+                            {% if history.snmp|length > 2 %}
+                            <div class="collapse" id="collapseSnmp">
+                                <div class="d-flex flex-column gap-3">
+                                {% for event in history.snmp[2:] %}
+                                    <div class="p-3 history-item border-snmp rounded">
+                                        <div class="d-flex justify-content-between">
+                                            <h6 class="mb-1 text-white text-break">{{ event.name }}</h6>
+                                        </div>
+                                        <div class="small text-muted mb-1">Prev Uptime: <strong class="text-danger">{{ event.old_uptime }}</strong></div>
+                                        <div class="small text-secondary">Rebooted: {{ event.time }}<br>IP: {{ event.ip }}</div>
+                                    </div>
+                                {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
@@ -182,5 +246,8 @@
         </div>
 
     </div>
+
+    <!-- Bootstrap Bundle (Required for Collapse feature) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
