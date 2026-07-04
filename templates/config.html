@@ -6,7 +6,7 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        html { font-size: 15px; }
+        html { font-size: {{ config.ui_text_size }}; }
         body { background-color: #121212; color: #e0e0e0; margin-top: 30px; margin-bottom: 50px; }
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .form-label { font-weight: bold; color: #adb5bd; }
@@ -14,7 +14,8 @@
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 1500px;">
+    <!-- The config page is always centered at a safe readable width -->
+    <div class="container" style="max-width: 1300px;">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
@@ -28,8 +29,8 @@
         </div>
 
         <form method="POST" action="/config">
-            
             <div class="row g-4 mb-4">
+                
                 <!-- ================= LEFT COLUMN ================= -->
                 <div class="col-lg-6 d-flex flex-column gap-4">
                     
@@ -63,6 +64,22 @@
                                     <option value="168" {% if config.session_timeout == 168 %}selected{% endif %}>1 Week</option>
                                     <option value="720" {% if config.session_timeout == 720 %}selected{% endif %}>30 Days</option>
                                     <option value="0" {% if config.session_timeout == 0 %}selected{% endif %}>Disabled (Permanent)</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6 mt-3">
+                                <label class="form-label">Dashboard Layout</label>
+                                <select name="ui_layout" class="form-select bg-dark text-white border-secondary">
+                                    <option value="2x2" {% if config.ui_layout == '2x2' %}selected{% endif %}>2x2 Grid (NVR Style)</option>
+                                    <option value="1x4" {% if config.ui_layout == '1x4' %}selected{% endif %}>1x4 Row (Ultra-Wide)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mt-3">
+                                <label class="form-label">Text Size</label>
+                                <select name="ui_text_size" class="form-select bg-dark text-white border-secondary">
+                                    <option value="15px" {% if config.ui_text_size == '15px' %}selected{% endif %}>Small (15px)</option>
+                                    <option value="16px" {% if config.ui_text_size == '16px' %}selected{% endif %}>Normal (16px)</option>
+                                    <option value="17px" {% if config.ui_text_size == '17px' %}selected{% endif %}>Large (17px)</option>
                                 </select>
                             </div>
                             
@@ -156,7 +173,6 @@
                             </div>
                         </div>
                     </div>
-
                 </div>
 
                 <!-- ================= RIGHT COLUMN ================= -->
@@ -333,7 +349,6 @@
                 </a>
             </div>
         </div>
-
     </div>
 
     <script>
