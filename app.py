@@ -29,7 +29,6 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
 
-# --- Force Tailscale Routing Fix on Boot ---
 try:
     subprocess.run(["tailscale", "set", "--accept-routes=true"], check=False)
 except: pass
@@ -67,11 +66,13 @@ def load_config():
             cfg.setdefault("nut_port_2", 3493)
             cfg.setdefault("nut_ups_names_2", "auto")
             cfg.setdefault("ups_min_runtime_2", 10)
+            
+            # Blank SNMP Name Defaults
             cfg.setdefault("snmp_ip", "")
-            cfg.setdefault("snmp_name", "Primary Switch")
+            cfg.setdefault("snmp_name", "")
             cfg.setdefault("snmp_community", "public")
             cfg.setdefault("snmp_ip_2", "")
-            cfg.setdefault("snmp_name_2", "Secondary Switch")
+            cfg.setdefault("snmp_name_2", "")
             cfg.setdefault("snmp_community_2", "public")
             
             if "admin_username" not in cfg:
@@ -87,8 +88,8 @@ def load_config():
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
         "nut_host_2": "", "nut_port_2": 3493, "nut_ups_names_2": "auto", "ups_min_runtime_2": 10,
-        "snmp_ip": "", "snmp_name": "Primary Switch", "snmp_community": "public",
-        "snmp_ip_2": "", "snmp_name_2": "Secondary Switch", "snmp_community_2": "public",
+        "snmp_ip": "", "snmp_name": "", "snmp_community": "public",
+        "snmp_ip_2": "", "snmp_name_2": "", "snmp_community_2": "public",
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
@@ -316,9 +317,9 @@ def config_page():
             "watchdog_threshold": int(request.form.get("watchdog_threshold", 5)),
             "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
             "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
-            "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "Primary Switch").strip(),
+            "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "").strip(),
             "snmp_community": request.form.get("snmp_community", "public").strip(),
-            "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "Secondary Switch").strip(),
+            "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "").strip(),
             "snmp_community_2": request.form.get("snmp_community_2", "public").strip(),
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
@@ -449,7 +450,7 @@ def poll_snmp():
             suffix = "" if s_id == "1" else "_2"
             ip = app_config.get(f"snmp_ip{suffix}")
             comm = app_config.get(f"snmp_community{suffix}", "public")
-            name = app_config.get(f"snmp_name{suffix}", f"Hardware {s_id}")
+            name = app_config.get(f"snmp_name{suffix}") or f"Hardware {s_id}"
 
             s_state = state["snmp"][s_id]
 
@@ -491,6 +492,9 @@ def poll_snmp():
 
 def poll_watchdog():
     while True:
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
+        
         for w_id in ["1", "2"]:
             suffix = "" if w_id == "1" else "_2"
             ip = app_config.get(f"watchdog_ip{suffix}")
@@ -540,8 +544,6 @@ def poll_watchdog():
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
 
-        c_ip1 = app_config.get("watchdog_ip")
-        c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
             if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
