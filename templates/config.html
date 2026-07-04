@@ -13,7 +13,8 @@
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 800px;">
+    <div class="container" style="max-width: 1300px;">
+        <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
@@ -28,288 +29,301 @@
 
         <form method="POST" action="/config">
             
-            <!-- Auth & System Settings -->
-            <div class="card p-4 mb-4 border border-info">
-                <h4 class="text-info mb-3">System & Admin Settings</h4>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Username</label>
-                        <input type="text" name="admin_username" class="form-control bg-dark text-white border-secondary" value="{{ config.admin_username }}" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">System Timezone</label>
-                        <input list="tz_list" name="timezone" class="form-control bg-dark text-white border-secondary" value="{{ config.timezone }}" required>
-                        <datalist id="tz_list">
-                            <option value="America/New_York">
-                            <option value="America/Chicago">
-                            <option value="America/Denver">
-                            <option value="America/Los_Angeles">
-                            <option value="America/Phoenix">
-                            <option value="Europe/London">
-                            <option value="UTC">
-                        </datalist>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Auto-Logout Timer</label>
-                        <select name="session_timeout" class="form-select bg-dark text-white border-secondary">
-                            <option value="1" {% if config.session_timeout == 1 %}selected{% endif %}>1 Hour</option>
-                            <option value="12" {% if config.session_timeout == 12 %}selected{% endif %}>12 Hours</option>
-                            <option value="24" {% if config.session_timeout == 24 %}selected{% endif %}>24 Hours</option>
-                            <option value="168" {% if config.session_timeout == 168 %}selected{% endif %}>1 Week</option>
-                            <option value="720" {% if config.session_timeout == 720 %}selected{% endif %}>30 Days</option>
-                            <option value="0" {% if config.session_timeout == 0 %}selected{% endif %}>Disabled (Permanent)</option>
-                        </select>
-                    </div>
+            <div class="row g-4 mb-4">
+                <!-- ================= LEFT COLUMN ================= -->
+                <div class="col-lg-6 d-flex flex-column gap-4">
                     
-                    <div class="col-md-6 mt-4">
-                        <label class="form-label">New Password (Leave blank to keep)</label>
-                        <input type="password" name="admin_password" id="pwd1" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
-                        <div class="progress mt-2">
-                            <div id="pwd-strength-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    <!-- Auth & System Settings -->
+                    <div class="card p-4 border border-info h-100">
+                        <h4 class="text-info mb-3">System & Admin Settings</h4>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Username</label>
+                                <input type="text" name="admin_username" class="form-control bg-dark text-white border-secondary" value="{{ config.admin_username }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">System Timezone</label>
+                                <input list="tz_list" name="timezone" class="form-control bg-dark text-white border-secondary" value="{{ config.timezone }}" required>
+                                <datalist id="tz_list">
+                                    <option value="America/New_York">
+                                    <option value="America/Chicago">
+                                    <option value="America/Denver">
+                                    <option value="America/Los_Angeles">
+                                    <option value="America/Phoenix">
+                                    <option value="Europe/London">
+                                    <option value="UTC">
+                                </datalist>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Auto-Logout Timer</label>
+                                <select name="session_timeout" class="form-select bg-dark text-white border-secondary">
+                                    <option value="1" {% if config.session_timeout == 1 %}selected{% endif %}>1 Hour</option>
+                                    <option value="12" {% if config.session_timeout == 12 %}selected{% endif %}>12 Hours</option>
+                                    <option value="24" {% if config.session_timeout == 24 %}selected{% endif %}>24 Hours</option>
+                                    <option value="168" {% if config.session_timeout == 168 %}selected{% endif %}>1 Week</option>
+                                    <option value="720" {% if config.session_timeout == 720 %}selected{% endif %}>30 Days</option>
+                                    <option value="0" {% if config.session_timeout == 0 %}selected{% endif %}>Disabled (Permanent)</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-md-6 mt-4">
+                                <label class="form-label">New Password (Leave blank to keep)</label>
+                                <input type="password" name="admin_password" id="pwd1" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
+                                <div class="progress mt-2">
+                                    <div id="pwd-strength-bar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mt-4">
+                                <label class="form-label">Confirm New Password</label>
+                                <input type="password" id="pwd2" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
+                                <div id="match-warning" class="text-danger small mt-1" style="display:none;">Passwords do not match!</div>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-6 mt-4">
-                        <label class="form-label">Confirm New Password</label>
-                        <input type="password" id="pwd2" onkeyup="checkPwd()" class="form-control bg-dark text-white border-secondary">
-                        <div id="match-warning" class="text-danger small mt-1" style="display:none;">Passwords do not match!</div>
+
+                    <!-- Outage Map Settings -->
+                    <div class="card p-4 h-100">
+                        <h4 class="text-info mb-3">Utility Grid Settings</h4>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Power Company Name</label>
+                                <input list="company_list" name="company_name" class="form-control bg-dark text-white border-secondary" value="{{ config.company_name }}" placeholder="Select or type custom name..." required>
+                                <datalist id="company_list">
+                                    <option value="Georgia Power">
+                                    <option value="Pacific Power">
+                                    <option value="Duke Energy">
+                                    <option value="FirstEnergy">
+                                    <option value="Alabama Power">
+                                    <option value="National Grid">
+                                    <option value="Entergy">
+                                    <option value="ComEd">
+                                    <option value="PECO">
+                                </datalist>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Zip Code (To Track)</label>
+                                <input type="text" name="zip_code" class="form-control bg-dark text-white border-secondary" value="{{ config.zip_code }}" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Outage API JSON URL (Leave blank to Auto-Discover)</label>
+                                <input type="url" name="kubra_url" class="form-control bg-dark text-white border-secondary" value="{{ config.kubra_url }}" placeholder="https://...">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Map Website URL (For Banner)</label>
+                                <input type="url" name="map_url" class="form-control bg-dark text-white border-secondary" value="{{ config.map_url }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Report Outage URL (For Button)</label>
+                                <input type="url" name="report_url" class="form-control bg-dark text-white border-secondary" value="{{ config.report_url }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Alert Threshold (Minutes)</label>
+                                <input type="number" name="threshold_mins" class="form-control bg-dark text-white border-secondary" value="{{ config.threshold_mins }}">
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Mapbox Image Generation -->
+                    <div class="card p-4 h-100">
+                        <h4 class="text-info mb-3">Mapbox Image Alerts (Optional)</h4>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Mapbox Public API Token</label>
+                                <input type="text" name="mapbox_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.mapbox_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}pk.eyJ1Ijoi...{% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Home Latitude</label>
+                                <input type="text" name="latitude" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.latitude %}•••••••• (Saved){% else %}34.1234{% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Home Longitude</label>
+                                <input type="text" name="longitude" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.longitude %}•••••••• (Saved){% else %}-84.1234{% endif %}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pushover Settings -->
+                    <div class="card p-4 h-100">
+                        <h4 class="text-info mb-3">Pushover Notifications</h4>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">User Key</label>
+                                <input type="text" name="pushover_user" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.pushover_user %}•••••••• (Saved) - Type 'clear' to remove{% else %}{% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">API Token</label>
+                                <input type="text" name="pushover_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.pushover_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}{% endif %}">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ================= RIGHT COLUMN ================= -->
+                <div class="col-lg-6 d-flex flex-column gap-4">
+                    
+                    <!-- Built-In Tailscale -->
+                    <div class="card p-4 border border-secondary h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-info mb-0">Built-in Tailscale VPN (Optional)</h4>
+                            {% if "Connected" in ts_status %}
+                                <span class="badge bg-success p-2">{{ ts_status }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary p-2">{{ ts_status }}</span>
+                            {% endif %}
+                        </div>
+                        <p class="small text-muted mb-3">Bridge this container directly to your home Tailscale network. Generate an Auth Key from the <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" class="text-info text-decoration-none">Tailscale Admin Console</a> and paste it below.</p>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Tailscale Auth Key</label>
+                                <input type="text" name="ts_authkey" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ts_authkey %}•••••••• (Saved) - Type 'clear' to disconnect{% else %}tskey-auth-...{% endif %}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Local NUT Settings -->
+                    <div class="card p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-info mb-0">Local UPS Settings (Optional)</h4>
+                            <div>
+                                {% if nut_status == "Connected" %}<span class="badge bg-success p-1">Primary: OK</span>{% elif nut_status == "Not Configured" %}{% else %}<span class="badge bg-danger p-1">Primary: Error</span>{% endif %}
+                                {% if nut_status_2 == "Connected" %}<span class="badge bg-success p-1">Secondary: OK</span>{% elif nut_status_2 == "Not Configured" %}{% else %}<span class="badge bg-danger p-1">Secondary: Error</span>{% endif %}
+                            </div>
+                        </div>
+                        <p class="small text-muted mb-3">Monitor up to two independent NUT servers. Leave Host field blank to disable.</p>
+                        
+                        <h6 class="text-muted text-uppercase mb-2">Primary NUT Server</h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-8">
+                                <label class="form-label">Host / IP</label>
+                                <input type="text" name="nut_host" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_host }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Port</label>
+                                <input type="number" name="nut_port" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_port }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">UPS Names (Comma separated or 'auto')</label>
+                                <input type="text" name="nut_ups_names" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_ups_names }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Critical Min. Runtime (Mins)</label>
+                                <input type="number" name="ups_min_runtime" class="form-control bg-dark text-white border-secondary" value="{{ config.ups_min_runtime }}">
+                            </div>
+                        </div>
+
+                        <hr class="border-secondary my-3">
+
+                        <h6 class="text-muted text-uppercase mb-2">Secondary NUT Server (Optional)</h6>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Host / IP</label>
+                                <input type="text" name="nut_host_2" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_host_2 }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Port</label>
+                                <input type="number" name="nut_port_2" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_port_2 }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">UPS Names (Comma separated or 'auto')</label>
+                                <input type="text" name="nut_ups_names_2" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_ups_names_2 }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Critical Min. Runtime (Mins)</label>
+                                <input type="number" name="ups_min_runtime_2" class="form-control bg-dark text-white border-secondary" value="{{ config.ups_min_runtime_2 }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Home Network Watchdog -->
+                    <div class="card p-4 border border-secondary h-100">
+                        <h4 class="text-info mb-3">Home Network Watchdog (Optional)</h4>
+                        <p class="small text-muted mb-3">Continuously ping up to two devices to detect ISP or local network failures. You can enter your home's Public IP, a Dynamic DNS hostname, or a secure Tailscale IP (e.g., 100.x.x.x).</p>
+                        
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Primary Target IP / Hostname</label>
+                                <input type="text" name="watchdog_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip }}" placeholder="e.g., 100.112.x.x or myhome.ddns.net">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Port</label>
+                                <input type="number" name="watchdog_port" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_port }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Threshold (Mins)</label>
+                                <input type="number" name="watchdog_threshold" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold }}">
+                            </div>
+                        </div>
+                        
+                        <hr class="border-secondary my-3">
+                        
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label text-muted">Secondary Target IP (Failover)</label>
+                                <input type="text" name="watchdog_ip_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip_2 }}" placeholder="Optional">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Port</label>
+                                <input type="number" name="watchdog_port_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_port_2 }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Threshold (Mins)</label>
+                                <input type="number" name="watchdog_threshold_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold_2 }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hardware SNMP Monitoring -->
+                    <div class="card p-4 h-100">
+                        <h4 class="text-info mb-3">Hardware SNMP Monitoring (Optional)</h4>
+                        <p class="small text-muted mb-3">Ensure your switch or router never reboots unnoticed. Enter the local IP and SNMPv2c Community String of up to two devices to track their Uptime.</p>
+                        
+                        <h6 class="text-muted text-uppercase mb-2">Primary Device</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Display Name</label>
+                                <input type="text" name="snmp_name" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Target IP</label>
+                                <input type="text" name="snmp_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip }}" placeholder="e.g. 10.0.1.2">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Community String</label>
+                                <input type="text" name="snmp_community" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community }}" placeholder="public">
+                            </div>
+                        </div>
+                        
+                        <hr class="border-secondary my-3">
+                        
+                        <h6 class="text-muted text-uppercase mb-2">Secondary Device</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label text-muted">Display Name</label>
+                                <input type="text" name="snmp_name_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name_2 }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-muted">Target IP</label>
+                                <input type="text" name="snmp_ip_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip_2 }}" placeholder="Optional">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label text-muted">Community String</label>
+                                <input type="text" name="snmp_community_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community_2 }}">
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
-            <!-- Outage Map Settings -->
-            <div class="card p-4 mb-4">
-                <h4 class="text-info mb-3">Utility Grid Settings</h4>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Power Company Name</label>
-                        <input list="company_list" name="company_name" class="form-control bg-dark text-white border-secondary" value="{{ config.company_name }}" placeholder="Select or type custom name..." required>
-                        <datalist id="company_list">
-                            <option value="Georgia Power">
-                            <option value="Pacific Power">
-                            <option value="Duke Energy">
-                            <option value="FirstEnergy">
-                            <option value="Alabama Power">
-                            <option value="National Grid">
-                            <option value="Entergy">
-                            <option value="ComEd">
-                            <option value="PECO">
-                        </datalist>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Zip Code (To Track)</label>
-                        <input type="text" name="zip_code" class="form-control bg-dark text-white border-secondary" value="{{ config.zip_code }}" required>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Outage API JSON URL (Leave blank to Auto-Discover from Map URL)</label>
-                        <input type="url" name="kubra_url" class="form-control bg-dark text-white border-secondary" value="{{ config.kubra_url }}" placeholder="https://...">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Map Website URL (For Banner)</label>
-                        <input type="url" name="map_url" class="form-control bg-dark text-white border-secondary" value="{{ config.map_url }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Report Outage URL (For Button)</label>
-                        <input type="url" name="report_url" class="form-control bg-dark text-white border-secondary" value="{{ config.report_url }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Alert Threshold (Minutes)</label>
-                        <input type="number" name="threshold_mins" class="form-control bg-dark text-white border-secondary" value="{{ config.threshold_mins }}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Built-In Tailscale -->
-            <div class="card p-4 mb-4 border border-secondary">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="text-info mb-0">Built-in Tailscale VPN (Optional)</h4>
-                    {% if "Connected" in ts_status %}
-                        <span class="badge bg-success p-2">{{ ts_status }}</span>
-                    {% else %}
-                        <span class="badge bg-secondary p-2">{{ ts_status }}</span>
-                    {% endif %}
-                </div>
-                <p class="small text-muted mb-3">Bridge this container directly to your home Tailscale network. Generate an Auth Key from the <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" class="text-info text-decoration-none">Tailscale Admin Console</a> and paste it below.</p>
-                <div class="row g-3">
-                    <div class="col-12">
-                        <label class="form-label">Tailscale Auth Key</label>
-                        <input type="text" name="ts_authkey" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ts_authkey %}•••••••• (Saved) - Type 'clear' to disconnect{% else %}tskey-auth-...{% endif %}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hardware SNMP Monitoring -->
-            <div class="card p-4 mb-4 border border-secondary">
-                <h4 class="text-info mb-3">Hardware SNMP Monitoring (Optional)</h4>
-                <p class="small text-muted mb-3">Ensure your switch or router never reboots unnoticed. Enter the local IP and SNMPv2c Community String of up to two devices to track their Uptime.</p>
-                
-                <h6 class="text-muted text-uppercase mb-2">Primary Device</h6>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Display Name</label>
-                        <input type="text" name="snmp_name" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Target IP</label>
-                        <input type="text" name="snmp_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip }}" placeholder="e.g. 10.0.1.2">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Community String</label>
-                        <input type="text" name="snmp_community" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community }}" placeholder="public">
-                    </div>
-                </div>
-                
-                <hr class="border-secondary my-3">
-                
-                <h6 class="text-muted text-uppercase mb-2">Secondary Device</h6>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label text-muted">Display Name</label>
-                        <input type="text" name="snmp_name_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name_2 }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label text-muted">Target IP</label>
-                        <input type="text" name="snmp_ip_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip_2 }}" placeholder="Optional">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label text-muted">Community String</label>
-                        <input type="text" name="snmp_community_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community_2 }}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Local NUT Settings -->
-            <div class="card p-4 mb-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="text-info mb-0">Local UPS Settings (Optional)</h4>
-                    <div>
-                        {% if nut_status == "Connected" %}<span class="badge bg-success p-1">Primary: OK</span>{% elif nut_status == "Not Configured" %}{% else %}<span class="badge bg-danger p-1">Primary: Error</span>{% endif %}
-                        {% if nut_status_2 == "Connected" %}<span class="badge bg-success p-1">Secondary: OK</span>{% elif nut_status_2 == "Not Configured" %}{% else %}<span class="badge bg-danger p-1">Secondary: Error</span>{% endif %}
-                    </div>
-                </div>
-                <p class="small text-muted mb-3">Monitor up to two independent NUT servers. Leave Host field blank to disable.</p>
-                
-                <h6 class="text-muted text-uppercase mb-2">Primary NUT Server</h6>
-                <div class="row g-3 mb-4">
-                    <div class="col-md-8">
-                        <label class="form-label">Host / IP</label>
-                        <input type="text" name="nut_host" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_host }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Port</label>
-                        <input type="number" name="nut_port" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_port }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">UPS Names (Comma separated or 'auto')</label>
-                        <input type="text" name="nut_ups_names" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_ups_names }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Critical Min. Runtime (Mins)</label>
-                        <input type="number" name="ups_min_runtime" class="form-control bg-dark text-white border-secondary" value="{{ config.ups_min_runtime }}">
-                    </div>
-                </div>
-
-                <hr class="border-secondary my-3">
-
-                <h6 class="text-muted text-uppercase mb-2">Secondary NUT Server (Optional)</h6>
-                <div class="row g-3">
-                    <div class="col-md-8">
-                        <label class="form-label">Host / IP</label>
-                        <input type="text" name="nut_host_2" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_host_2 }}">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Port</label>
-                        <input type="number" name="nut_port_2" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_port_2 }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">UPS Names (Comma separated or 'auto')</label>
-                        <input type="text" name="nut_ups_names_2" class="form-control bg-dark text-white border-secondary" value="{{ config.nut_ups_names_2 }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Critical Min. Runtime (Mins)</label>
-                        <input type="number" name="ups_min_runtime_2" class="form-control bg-dark text-white border-secondary" value="{{ config.ups_min_runtime_2 }}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Home Network Watchdog -->
-            <div class="card p-4 mb-4 border border-secondary">
-                <h4 class="text-info mb-3">Home Network Watchdog (Optional)</h4>
-                <p class="small text-muted mb-3">Continuously ping up to two devices to detect ISP or local network failures. You can enter your home's Public IP, a Dynamic DNS hostname, or a secure Tailscale IP (e.g., 100.x.x.x).</p>
-                
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Primary Target IP / Hostname</label>
-                        <input type="text" name="watchdog_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip }}" placeholder="e.g., 100.112.x.x or myhome.ddns.net">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Port</label>
-                        <input type="number" name="watchdog_port" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_port }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Threshold (Mins)</label>
-                        <input type="number" name="watchdog_threshold" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold }}">
-                    </div>
-                </div>
-                
-                <hr class="border-secondary my-3">
-                
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label text-muted">Secondary Target IP (Failover)</label>
-                        <input type="text" name="watchdog_ip_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_ip_2 }}" placeholder="Optional">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label text-muted">Port</label>
-                        <input type="number" name="watchdog_port_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_port_2 }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label text-muted">Threshold (Mins)</label>
-                        <input type="number" name="watchdog_threshold_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold_2 }}">
-                    </div>
-                </div>
-            </div>
-
+            <!-- Save Section -->
             <p class="small text-warning text-center mb-3">🔒 For your security, saved API Keys and Coordinates are hidden from the interface. <br>Leave the fields blank to keep your current settings, or type <code>clear</code> to remove them.</p>
-
-            <!-- Mapbox Image Generation -->
-            <div class="card p-4 mb-4">
-                <h4 class="text-info mb-3">Mapbox Image Alerts (Optional)</h4>
-                <div class="row g-3">
-                    <div class="col-12">
-                        <label class="form-label">Mapbox Public API Token</label>
-                        <input type="text" name="mapbox_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.mapbox_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}pk.eyJ1Ijoi...{% endif %}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Home Latitude</label>
-                        <input type="text" name="latitude" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.latitude %}•••••••• (Saved){% else %}34.1234{% endif %}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Home Longitude</label>
-                        <input type="text" name="longitude" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.longitude %}•••••••• (Saved){% else %}-84.1234{% endif %}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Pushover Settings -->
-            <div class="card p-4 mb-4">
-                <h4 class="text-info mb-3">Pushover Notifications</h4>
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">User Key</label>
-                        <input type="text" name="pushover_user" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.pushover_user %}•••••••• (Saved) - Type 'clear' to remove{% else %}{% endif %}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">API Token</label>
-                        <input type="text" name="pushover_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.pushover_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}{% endif %}">
-                    </div>
-                </div>
-            </div>
-
-            <button type="submit" id="saveBtn" class="btn btn-success w-100 p-3 fw-bold fs-5">💾 Save Configuration</button>
+            
+            <button type="submit" id="saveBtn" class="btn btn-success w-100 p-3 fw-bold fs-5 mb-5">💾 Save Configuration</button>
         </form>
 
         <!-- Footer -->
-        <div class="row mt-5">
+        <div class="row pb-4">
             <div class="col-12 text-center">
                 <a href="https://github.com/NightHawkATL/outage-tracker" target="_blank" class="text-muted text-decoration-none small">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-github" viewBox="0 0 16 16" style="vertical-align: -0.125em; margin-right: 4px;">
