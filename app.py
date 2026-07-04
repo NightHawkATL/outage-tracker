@@ -60,7 +60,6 @@ def load_config():
             cfg.setdefault("nut_port_2", 3493)
             cfg.setdefault("nut_ups_names_2", "auto")
             cfg.setdefault("ups_min_runtime_2", 10)
-            # SNMP Defaults
             cfg.setdefault("snmp_ip", "")
             cfg.setdefault("snmp_name", "Primary Switch")
             cfg.setdefault("snmp_community", "public")
@@ -277,7 +276,9 @@ def config_page():
 
         new_ts_key = get_secure("ts_authkey")
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
-            try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=false"], check=True)
+            try: 
+                # CHANGED TO ACCEPT ROUTES = TRUE FOR CLOUD VPS ROUTING
+                subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=true"], check=True)
             except Exception as e: logging.error(f"Tailscale auth failed: {e}")
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
@@ -434,6 +435,9 @@ def fetch_nut_data(host, port, names):
 
 def poll_snmp():
     while True:
+        c_ip1 = app_config.get("snmp_ip")
+        c_ip2 = app_config.get("snmp_ip_2")
+        
         for s_id in ["1", "2"]:
             suffix = "" if s_id == "1" else "_2"
             ip = app_config.get(f"snmp_ip{suffix}")
@@ -453,7 +457,6 @@ def poll_snmp():
                         s_state["online"] = True
                         
                         if s_state["uptime_s"] is not None:
-                            # If uptime drops by more than a minute, a reboot occurred
                             if new_uptime_s < (s_state["uptime_s"] - 60):
                                 send_pushover("🔄 Hardware Reboot", f"{name} ({ip}) has rebooted.\nNew Uptime: {format_uptime(new_uptime_s)}", priority=0)
                                 hist = load_history()
@@ -472,11 +475,16 @@ def poll_snmp():
                 s_state["online"] = False
                 s_state["uptime_s"] = None
                 
+        # Smart Wait allows instant re-polling when you edit SNMP IPs
         for _ in range(300):
+            if app_config.get("snmp_ip") != c_ip1 or app_config.get("snmp_ip_2") != c_ip2: break
             time.sleep(1)
 
 def poll_watchdog():
     while True:
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
+        
         for w_id in ["1", "2"]:
             suffix = "" if w_id == "1" else "_2"
             ip = app_config.get(f"watchdog_ip{suffix}")
@@ -526,8 +534,6 @@ def poll_watchdog():
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
 
-        c_ip1 = app_config.get("watchdog_ip")
-        c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
             if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
