@@ -42,7 +42,6 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             cfg = json.load(f)
-            cfg.setdefault("timezone", "America/New_York")
             cfg.setdefault("map_url", "")
             cfg.setdefault("report_url", "")
             cfg.setdefault("mapbox_token", "")
@@ -50,17 +49,24 @@ def load_config():
             cfg.setdefault("longitude", "")
             cfg.setdefault("ts_authkey", "")
             cfg.setdefault("session_timeout", 24)
+            cfg.setdefault("timezone", "America/New_York")
             cfg.setdefault("watchdog_ip", "")
             cfg.setdefault("watchdog_port", 80)
             cfg.setdefault("watchdog_threshold", 5)
             cfg.setdefault("watchdog_ip_2", "")
             cfg.setdefault("watchdog_port_2", 80)
             cfg.setdefault("watchdog_threshold_2", 5)
-            # Secondary NUT defaults
             cfg.setdefault("nut_host_2", "")
             cfg.setdefault("nut_port_2", 3493)
             cfg.setdefault("nut_ups_names_2", "auto")
             cfg.setdefault("ups_min_runtime_2", 10)
+            # SNMP Defaults
+            cfg.setdefault("snmp_ip", "")
+            cfg.setdefault("snmp_name", "Primary Switch")
+            cfg.setdefault("snmp_community", "public")
+            cfg.setdefault("snmp_ip_2", "")
+            cfg.setdefault("snmp_name_2", "Secondary Switch")
+            cfg.setdefault("snmp_community_2", "public")
             
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
@@ -74,6 +80,8 @@ def load_config():
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
         "nut_host_2": "", "nut_port_2": 3493, "nut_ups_names_2": "auto", "ups_min_runtime_2": 10,
+        "snmp_ip": "", "snmp_name": "Primary Switch", "snmp_community": "public",
+        "snmp_ip_2": "", "snmp_name_2": "Secondary Switch", "snmp_community_2": "public",
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
@@ -90,18 +98,19 @@ def load_history():
         with open(HISTORY_FILE, 'r') as f:
             data = json.load(f)
             if "watchdog" not in data: data["watchdog"] = []
+            if "snmp" not in data: data["snmp"] = []
             return data
-    return {"grid": [], "ups": [], "watchdog": []}
+    return {"grid": [], "ups": [], "watchdog": [], "snmp": []}
 
 def save_history(history):
     history["grid"] = history["grid"][-50:]
     history["ups"] = history["ups"][-50:]
     history["watchdog"] = history.get("watchdog", [])[-50:]
+    history["snmp"] = history.get("snmp", [])[-50:]
     with open(HISTORY_FILE, 'w') as f: json.dump(history, f, indent=4)
 
 app_config = load_config()
 
-# Apply System Timezone
 os.environ['TZ'] = app_config.get("timezone", "America/New_York")
 time.tzset()
 
@@ -115,7 +124,11 @@ state = {
         "1": {"online": True, "down_time": None, "alert_sent": False},
         "2": {"online": True, "down_time": None, "alert_sent": False}
     },
-    "watchdog_last_check": None
+    "watchdog_last_check": None,
+    "snmp": {
+        "1": {"online": False, "uptime_s": None, "last_check": None},
+        "2": {"online": False, "uptime_s": None, "last_check": None}
+    }
 }
 
 def login_required(f):
@@ -132,6 +145,15 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def format_uptime(seconds):
+    if seconds is None: return "Unknown"
+    days = int(seconds // 86400)
+    hours = int((seconds % 86400) // 3600)
+    mins = int((seconds % 3600) // 60)
+    if days > 0: return f"{days}d {hours}h {mins}m"
+    if hours > 0: return f"{hours}h {mins}m"
+    return f"{mins} mins"
+
 def auto_discover_api(map_url, zip_code):
     if not map_url: return ""
     try:
@@ -142,21 +164,15 @@ def auto_discover_api(map_url, zip_code):
         
         iframes = re.findall(r'<iframe.*?src=[\'"]([^\'"]+)[\'"]', text, re.IGNORECASE)
         for iframe in iframes:
-            if not iframe.startswith('http'):
-                iframe = urllib.parse.urljoin(map_url, iframe)
-            try:
-                i_resp = requests.get(iframe, timeout=5, headers=headers)
-                text += " " + i_resp.text
+            if not iframe.startswith('http'): iframe = urllib.parse.urljoin(map_url, iframe)
+            try: text += " " + requests.get(iframe, timeout=5, headers=headers).text
             except: pass
 
         scripts = re.findall(r'<script.*?src=[\'"]([^\'"]+\.js[^\'"]*)[\'"]', text, re.IGNORECASE)
         for script in scripts:
             if not script.startswith('http') or urllib.parse.urlparse(script).netloc == urllib.parse.urlparse(map_url).netloc:
-                if not script.startswith('http'):
-                    script = urllib.parse.urljoin(map_url, script)
-                try:
-                    s_resp = requests.get(script, timeout=5, headers=headers)
-                    text += " " + s_resp.text
+                if not script.startswith('http'): script = urllib.parse.urljoin(map_url, script)
+                try: text += " " + requests.get(script, timeout=5, headers=headers).text
                 except: pass
             
         uuids = list(set(re.findall(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', text, re.IGNORECASE)))
@@ -227,7 +243,7 @@ def index():
         for ups in state["ups_data"].values():
             if "OB" in ups.get("status", ""): event_active = True
                 
-    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active)
+    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active, format_uptime=format_uptime)
 
 @app.route("/history")
 @login_required
@@ -236,6 +252,7 @@ def history_page():
     history_data["grid"] = history_data["grid"][::-1]
     history_data["ups"] = history_data["ups"][::-1]
     history_data["watchdog"] = history_data.get("watchdog", [])[::-1]
+    history_data["snmp"] = history_data.get("snmp", [])[::-1]
     return render_template("history.html", state=state, config=app_config, history=history_data)
 
 @app.route("/config", methods=["GET", "POST"])
@@ -279,32 +296,22 @@ def config_page():
                 logging.warning("❌ Auto-discovery failed.")
 
         app_config.update({
-            "session_timeout": int(request.form.get("session_timeout", 24)),
-            "timezone": new_tz,
-            "company_name": request.form.get("company_name", "").strip(),
-            "zip_code": zip_c,
-            "threshold_mins": int(request.form.get("threshold_mins", 45)),
-            "kubra_url": api_url,
-            "map_url": map_url,
-            "report_url": request.form.get("report_url", "").strip(),
-            
-            "nut_host": request.form.get("nut_host", "").strip(),
-            "nut_port": int(request.form.get("nut_port", 3493)),
-            "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(),
-            "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
-            
-            "nut_host_2": request.form.get("nut_host_2", "").strip(),
-            "nut_port_2": int(request.form.get("nut_port_2", 3493)),
-            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(),
-            "ups_min_runtime_2": int(request.form.get("ups_min_runtime_2", 10)),
-            
-            "watchdog_ip": request.form.get("watchdog_ip", "").strip(),
-            "watchdog_port": int(request.form.get("watchdog_port", 80)),
+            "session_timeout": int(request.form.get("session_timeout", 24)), "timezone": new_tz,
+            "company_name": request.form.get("company_name", "").strip(), "zip_code": zip_c,
+            "threshold_mins": int(request.form.get("threshold_mins", 45)), "kubra_url": api_url,
+            "map_url": map_url, "report_url": request.form.get("report_url", "").strip(),
+            "nut_host": request.form.get("nut_host", "").strip(), "nut_port": int(request.form.get("nut_port", 3493)),
+            "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(), "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
+            "nut_host_2": request.form.get("nut_host_2", "").strip(), "nut_port_2": int(request.form.get("nut_port_2", 3493)),
+            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(), "ups_min_runtime_2": int(request.form.get("ups_min_runtime_2", 10)),
+            "watchdog_ip": request.form.get("watchdog_ip", "").strip(), "watchdog_port": int(request.form.get("watchdog_port", 80)),
             "watchdog_threshold": int(request.form.get("watchdog_threshold", 5)),
-            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(),
-            "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
+            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
             "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
-            
+            "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "Primary Switch").strip(),
+            "snmp_community": request.form.get("snmp_community", "public").strip(),
+            "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "Secondary Switch").strip(),
+            "snmp_community_2": request.form.get("snmp_community_2", "public").strip(),
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
@@ -319,6 +326,9 @@ def config_page():
         for w in ["1", "2"]:
             state["watchdogs"][w]["online"] = True
             state["watchdogs"][w]["alert_sent"] = False
+        for s in ["1", "2"]:
+            state["snmp"][s]["online"] = False
+            state["snmp"][s]["uptime_s"] = None
         state["last_check"] = "Pending..."
         return redirect(url_for('config_page'))
         
@@ -422,6 +432,106 @@ def fetch_nut_data(host, port, names):
         return results
     except: return None
 
+def poll_snmp():
+    while True:
+        for s_id in ["1", "2"]:
+            suffix = "" if s_id == "1" else "_2"
+            ip = app_config.get(f"snmp_ip{suffix}")
+            comm = app_config.get(f"snmp_community{suffix}", "public")
+            name = app_config.get(f"snmp_name{suffix}", f"Hardware {s_id}")
+
+            s_state = state["snmp"][s_id]
+
+            if ip:
+                try:
+                    res = subprocess.run(["snmpget", "-v2c", "-c", comm, "-O", "tq", "-t", "3", "-r", "1", ip, "1.3.6.1.2.1.1.3.0"], capture_output=True, text=True)
+                    s_state["last_check"] = datetime.now().strftime("%I:%M:%S %p")
+                    
+                    if res.returncode == 0:
+                        ticks = int(res.stdout.strip())
+                        new_uptime_s = ticks / 100.0
+                        s_state["online"] = True
+                        
+                        if s_state["uptime_s"] is not None:
+                            # If uptime drops by more than a minute, a reboot occurred
+                            if new_uptime_s < (s_state["uptime_s"] - 60):
+                                send_pushover("🔄 Hardware Reboot", f"{name} ({ip}) has rebooted.\nNew Uptime: {format_uptime(new_uptime_s)}", priority=0)
+                                hist = load_history()
+                                hist["snmp"].append({
+                                    "name": name, "ip": ip, "time": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+                                    "old_uptime": format_uptime(s_state["uptime_s"])
+                                })
+                                save_history(hist)
+
+                        s_state["uptime_s"] = new_uptime_s
+                    else:
+                        s_state["online"] = False
+                except Exception as e:
+                    s_state["online"] = False
+            else:
+                s_state["online"] = False
+                s_state["uptime_s"] = None
+                
+        for _ in range(300):
+            time.sleep(1)
+
+def poll_watchdog():
+    while True:
+        for w_id in ["1", "2"]:
+            suffix = "" if w_id == "1" else "_2"
+            ip = app_config.get(f"watchdog_ip{suffix}")
+            port = app_config.get(f"watchdog_port{suffix}", 80)
+            thresh = app_config.get(f"watchdog_threshold{suffix}", 5)
+
+            if ip:
+                is_online = False
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.settimeout(4)
+                        s.connect((ip, int(port)))
+                        is_online = True
+                except Exception: pass
+
+                state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
+                wd_state = state["watchdogs"][w_id]
+                name = "Primary WAN" if w_id == "1" else "Secondary WAN"
+
+                if is_online:
+                    if not wd_state.get("online", True):
+                        elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
+                        hist = load_history()
+                        hist["watchdog"].append({
+                            "target": f"{name} ({ip}:{port})", 
+                            "start": wd_state["down_time"].strftime("%Y-%m-%d %I:%M %p"),
+                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), 
+                            "duration_mins": int(elapsed)
+                        })
+                        save_history(hist)
+
+                        if wd_state.get("alert_sent"):
+                            send_pushover("✅ Network Restored", f"{name} connection to {ip}:{port} restored.\nDowntime: {int(elapsed)} mins.", priority=0)
+                    
+                    wd_state["online"] = True
+                    wd_state["down_time"] = None
+                    wd_state["alert_sent"] = False
+                else:
+                    if wd_state.get("online", True):
+                        wd_state["online"] = False
+                        wd_state["down_time"] = datetime.now()
+                        wd_state["alert_sent"] = False
+
+                    if wd_state["down_time"]:
+                        elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
+                        if elapsed >= thresh and not wd_state["alert_sent"]:
+                            send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
+                            wd_state["alert_sent"] = True
+
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
+        for _ in range(60):
+            if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
+            time.sleep(1)
+
 def poll_nut():
     while True:
         c_host1 = app_config.get("nut_host")
@@ -490,63 +600,6 @@ def poll_nut():
         
         for _ in range(30):
             if app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2: break
-            time.sleep(1)
-
-def poll_watchdog():
-    while True:
-        for w_id in ["1", "2"]:
-            suffix = "" if w_id == "1" else "_2"
-            ip = app_config.get(f"watchdog_ip{suffix}")
-            port = app_config.get(f"watchdog_port{suffix}", 80)
-            thresh = app_config.get(f"watchdog_threshold{suffix}", 5)
-
-            if ip:
-                is_online = False
-                try:
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        s.settimeout(4)
-                        s.connect((ip, int(port)))
-                        is_online = True
-                except Exception: pass
-
-                state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
-                wd_state = state["watchdogs"][w_id]
-                name = "Primary WAN" if w_id == "1" else "Secondary WAN"
-
-                if is_online:
-                    if not wd_state.get("online", True):
-                        elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
-                        hist = load_history()
-                        hist["watchdog"].append({
-                            "target": f"{name} ({ip}:{port})", 
-                            "start": wd_state["down_time"].strftime("%Y-%m-%d %I:%M %p"),
-                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), 
-                            "duration_mins": int(elapsed)
-                        })
-                        save_history(hist)
-
-                        if wd_state.get("alert_sent"):
-                            send_pushover("✅ Network Restored", f"{name} connection to {ip}:{port} restored.\nDowntime: {int(elapsed)} mins.", priority=0)
-                    
-                    wd_state["online"] = True
-                    wd_state["down_time"] = None
-                    wd_state["alert_sent"] = False
-                else:
-                    if wd_state.get("online", True):
-                        wd_state["online"] = False
-                        wd_state["down_time"] = datetime.now()
-                        wd_state["alert_sent"] = False
-
-                    if wd_state["down_time"]:
-                        elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
-                        if elapsed >= thresh and not wd_state["alert_sent"]:
-                            send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
-                            wd_state["alert_sent"] = True
-
-        c_ip1 = app_config.get("watchdog_ip")
-        c_ip2 = app_config.get("watchdog_ip_2")
-        for _ in range(60):
-            if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
 
 def poll_gp_outages():
@@ -665,4 +718,5 @@ if __name__ == "__main__":
     threading.Thread(target=poll_gp_outages, daemon=True).start()
     threading.Thread(target=poll_nut, daemon=True).start()
     threading.Thread(target=poll_watchdog, daemon=True).start()
+    threading.Thread(target=poll_snmp, daemon=True).start()
     app.run(host="0.0.0.0", port=8080)
