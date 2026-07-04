@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #121212; color: #e0e0e0; margin-top: 30px; margin-bottom: 50px; }
-        .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); height: 100%; }
+        .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .status-ok { color: #4caf50; font-weight: bold; }
         .status-outage { color: #f44336; font-weight: bold; }
         .map-banner { transition: transform 0.2s; position: relative; }
@@ -23,10 +23,9 @@
     {% else %}
         <meta http-equiv="refresh" content="300">
     {% endif %}
-
 </head>
 <body>
-    <div class="container" style="max-width: 1000px;">
+    <div class="container" style="max-width: 1400px;">
         
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
@@ -51,10 +50,31 @@
             </div>
         </div>
         
+        <!-- Dynamic Layout Logic -->
+        {% set show_nut = state.nut_enabled %}
+        {% set show_wd = config.watchdog_ip or config.watchdog_ip_2 %}
+        {% set show_snmp = config.snmp_ip or config.snmp_ip_2 %}
+
+        {% set active_panels = 1 %}
+        {% if show_nut %}{% set active_panels = active_panels + 1 %}{% endif %}
+        {% if show_wd %}{% set active_panels = active_panels + 1 %}{% endif %}
+        {% if show_snmp %}{% set active_panels = active_panels + 1 %}{% endif %}
+
+        {% if active_panels == 4 %}
+            {% set col_class = 'col-xl-3 col-lg-6' %}
+        {% elif active_panels == 3 %}
+            {% set col_class = 'col-lg-4 col-md-6' %}
+        {% elif active_panels == 2 %}
+            {% set col_class = 'col-md-6' %}
+        {% else %}
+            {% set col_class = 'col-lg-8 mx-auto' %}
+        {% endif %}
+
         <div class="row g-4 justify-content-center">
-            <!-- Utility Card -->
-            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-md-6{% else %}col-lg-8 mx-auto{% endif %}">
-                <div class="card p-4 text-center">
+            
+            <!-- 1. Utility Card -->
+            <div class="{{ col_class }}">
+                <div class="card p-4 text-center h-100">
                     <h5 class="text-info">
                         {% if config.company_name %}{{ config.company_name }} Area{% else %}Utility Area{% endif %}
                         {% if config.zip_code %}(Zip: <strong>{{ config.zip_code }}</strong>){% endif %}
@@ -89,65 +109,17 @@
                         <span class="badge bg-success p-2">All Clear</span>
                     {% endif %}
                     
-                    <div class="mt-4 text-muted small">
+                    <div class="mt-auto pt-4 text-muted small">
                         Last API Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span><br>
                         {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
                     </div>
-
-                    <!-- Dual-WAN Watchdog Panel -->
-                    {% if config.watchdog_ip or config.watchdog_ip_2 %}
-                    <hr class="my-4 border-secondary">
-                    <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
-                        <h5 class="text-info mb-3">Home Network Watchdog</h5>
-                        
-                        {% if config.watchdog_ip %}
-                            {% set w1 = state.watchdogs["1"] %}
-                            <div class="mb-2">
-                                <h6 class="text-muted text-uppercase mb-2">Primary WAN</h6>
-                                {% if w1.online %}
-                                    <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
-                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
-                                {% else %}
-                                    <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
-                                    <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip }}:{{ config.watchdog_port }})</p>
-                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["1"] }} mins</p>
-                                    {% if w1.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
-                                {% endif %}
-                            </div>
-                        {% endif %}
-
-                        {% if config.watchdog_ip and config.watchdog_ip_2 %}
-                            <hr class="border-secondary my-3">
-                        {% endif %}
-
-                        {% if config.watchdog_ip_2 %}
-                            {% set w2 = state.watchdogs["2"] %}
-                            <div>
-                                <h6 class="text-muted text-uppercase mb-2">Secondary WAN</h6>
-                                {% if w2.online %}
-                                    <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
-                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }}</p>
-                                {% else %}
-                                    <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
-                                    <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }})</p>
-                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["2"] }} mins</p>
-                                    {% if w2.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
-                                {% endif %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    {% endif %}
-
                 </div>
             </div>
 
-            <!-- Hardware Card Column -->
-            {% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}
-            <div class="col-md-6 d-flex flex-column gap-4">
-                
-                <!-- Local UPS Array Card -->
-                {% if state.nut_enabled %}
-                <div class="card p-4">
+            <!-- 2. Local UPS Array Card -->
+            {% if show_nut %}
+            <div class="{{ col_class }}">
+                <div class="card p-4 h-100">
                     <h5 class="text-center text-muted">Local UPS Systems</h5>
                     <hr>
                     {% if not state.ups_data %}
@@ -179,17 +151,66 @@
                         {% endfor %}
                         </div>
                     {% endif %}
-                    <div class="mt-4 text-center text-muted small">
+                    <div class="mt-auto pt-4 text-center text-muted small">
                         Alert triggers based on server configuration.<br>
                         Last NUT Sync: {{ state.nut_last_check if state.nut_last_check else 'Pending...' }}
                         {% if state.nut_error %}<br><span class="text-danger">{{ state.nut_error }}</span>{% endif %}
                     </div>
                 </div>
-                {% endif %}
+            </div>
+            {% endif %}
 
-                <!-- SNMP Hardware Monitor -->
-                {% if config.snmp_ip or config.snmp_ip_2 %}
-                <div class="card p-4">
+            <!-- 3. Dual-WAN Watchdog Card -->
+            {% if show_wd %}
+            <div class="{{ col_class }}">
+                <div class="card p-4 text-center h-100">
+                    <h5 class="text-info">Home Network Watchdog</h5>
+                    <hr>
+                    <div class="d-flex flex-column justify-content-center h-100">
+                        {% if config.watchdog_ip %}
+                            {% set w1 = state.watchdogs["1"] %}
+                            <div class="mb-3">
+                                <h6 class="text-muted text-uppercase mb-2">Primary WAN</h6>
+                                {% if w1.online %}
+                                    <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
+                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
+                                {% else %}
+                                    <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
+                                    <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip }}:{{ config.watchdog_port }})</p>
+                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["1"] }} mins</p>
+                                    {% if w1.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        {% if config.watchdog_ip and config.watchdog_ip_2 %}
+                            <hr class="border-secondary my-2 w-75 mx-auto">
+                        {% endif %}
+
+                        {% if config.watchdog_ip_2 %}
+                            {% set w2 = state.watchdogs["2"] %}
+                            <div class="mt-2">
+                                <h6 class="text-muted text-uppercase mb-2">Secondary WAN</h6>
+                                {% if w2.online %}
+                                    <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
+                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }}</p>
+                                {% else %}
+                                    <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
+                                    <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }})</p>
+                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["2"] }} mins</p>
+                                    {% if w2.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 4. Hardware Infrastructure Card -->
+            {% if show_snmp %}
+            <div class="{{ col_class }}">
+                <div class="card p-4 h-100">
                     <h5 class="text-center text-muted">Hardware Infrastructure</h5>
                     <hr>
                     <div class="d-flex flex-column gap-3 mt-2">
@@ -219,20 +240,19 @@
                             {% endif %}
                         {% endfor %}
                     </div>
-                    <div class="mt-4 text-center text-muted small">
+                    <div class="mt-auto pt-4 text-center text-muted small">
                         Last SNMP Poll: {{ state.snmp["1"].last_check if state.snmp["1"].last_check else 'Pending...' }}
                     </div>
                 </div>
-                {% endif %}
-
             </div>
             {% endif %}
+
         </div>
 
         <!-- Map Banner Row -->
         {% if config.map_url or config.mapbox_token %}
         <div class="row mt-4 justify-content-center">
-            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-12{% else %}col-lg-8{% endif %}">
+            <div class="col-12">
                 <a href="{{ config.map_url if config.map_url else '#' }}" target="_blank" class="text-decoration-none">
                     <div class="card bg-dark text-white overflow-hidden map-banner" style="height: 160px;">
                         
@@ -261,14 +281,14 @@
         <!-- Actions Row -->
         <div class="row mt-3 g-3 justify-content-center">
             {% if config.report_url %}
-            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-md-6{% else %}col-lg-4{% endif %}">
+            <div class="col-md-6">
                 <a href="{{ config.report_url }}" target="_blank" class="btn btn-primary w-100 p-3 fw-bold">
                     📢 Report an Outage
                 </a>
             </div>
             {% endif %}
             
-            <div class="{% if state.nut_enabled or config.snmp_ip or config.snmp_ip_2 %}col-md-6{% else %}col-lg-4{% endif %}">
+            <div class="col-md-6">
                 <button onclick="testPushover()" id="pushTestBtn" class="btn btn-outline-info w-100 p-3 fw-bold">
                     🔔 Test Pushover Alert
                 </button>
@@ -289,6 +309,8 @@
 
     </div>
 
+    <!-- Bootstrap Bundle with Popper (Required for Collapsible Elements) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function testPushover() {
             const btn = document.getElementById('pushTestBtn');
