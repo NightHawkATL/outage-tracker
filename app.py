@@ -29,11 +29,6 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
 
-# --- Force Tailscale Routing Fix on Boot ---
-try:
-    subprocess.run(["tailscale", "set", "--accept-routes=true"], check=False)
-except: pass
-
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'wb') as kf: kf.write(Fernet.generate_key())
 
@@ -55,6 +50,8 @@ def load_config():
             cfg.setdefault("ts_authkey", "")
             cfg.setdefault("session_timeout", 24)
             cfg.setdefault("timezone", "America/New_York")
+            cfg.setdefault("ui_layout", "2x2")
+            cfg.setdefault("ui_text_size", "15px")
             cfg.setdefault("watchdog_ip", "")
             cfg.setdefault("watchdog_port", 80)
             cfg.setdefault("watchdog_threshold", 5)
@@ -80,6 +77,7 @@ def load_config():
     config = {
         "admin_username": "admin", "admin_password": cipher_suite.encrypt(b"admin").decode('utf-8'),
         "session_timeout": 24, "timezone": "America/New_York",
+        "ui_layout": "2x2", "ui_text_size": "15px",
         "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
@@ -301,6 +299,7 @@ def config_page():
 
         app_config.update({
             "session_timeout": int(request.form.get("session_timeout", 24)), "timezone": new_tz,
+            "ui_layout": request.form.get("ui_layout", "2x2"), "ui_text_size": request.form.get("ui_text_size", "15px"),
             "company_name": request.form.get("company_name", "").strip(), "zip_code": zip_c,
             "threshold_mins": int(request.form.get("threshold_mins", 45)), "kubra_url": api_url,
             "map_url": map_url, "report_url": request.form.get("report_url", "").strip(),
@@ -487,6 +486,9 @@ def poll_snmp():
 
 def poll_watchdog():
     while True:
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
+        
         for w_id in ["1", "2"]:
             suffix = "" if w_id == "1" else "_2"
             ip = app_config.get(f"watchdog_ip{suffix}")
@@ -536,8 +538,6 @@ def poll_watchdog():
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
 
-        c_ip1 = app_config.get("watchdog_ip")
-        c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
             if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
@@ -593,7 +593,7 @@ def poll_nut():
                         
                     if ups_state["alert_sent"]:
                         send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
-                        ups_state["alert_sent"] = False
+                    ups_state["alert_sent"] = False
 
         if c_host1:
             data1 = fetch_nut_data(c_host1, c_port1, c_names1)
