@@ -7,6 +7,7 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        html { font-size: 15px; }
         body { background-color: #121212; color: #e0e0e0; margin-top: 30px; margin-bottom: 50px; }
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .history-item { background-color: #2a2a2a; border-left: 4px solid; }
@@ -17,9 +18,9 @@
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 1400px;">
+    <div class="container" style="max-width: 1500px;">
         <!-- Header -->
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+        <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
                 <span class="d-none d-sm-inline">Outage Tracker History</span>
