@@ -7,7 +7,7 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        html { font-size: 15px; } /* Slightly scales down all text and padding globally */
+        html { font-size: {{ config.ui_text_size }}; }
         body { background-color: #121212; color: #e0e0e0; margin-top: 30px; margin-bottom: 50px; }
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); height: 100%; }
         .status-ok { color: #4caf50; font-weight: bold; }
@@ -26,7 +26,31 @@
     {% endif %}
 </head>
 <body>
-    <div class="container" style="max-width: 1500px;">
+    
+    <!-- Layout Logic -->
+    {% set show_nut = state.nut_enabled %}
+    {% set show_wd = config.watchdog_ip or config.watchdog_ip_2 %}
+    {% set show_snmp = config.snmp_ip or config.snmp_ip_2 %}
+
+    {% set active_panels = 1 %}
+    {% if show_nut %}{% set active_panels = active_panels + 1 %}{% endif %}
+    {% if show_wd %}{% set active_panels = active_panels + 1 %}{% endif %}
+    {% if show_snmp %}{% set active_panels = active_panels + 1 %}{% endif %}
+
+    {% if config.ui_layout == '1x4' %}
+        {% set container_width = '1500px' %}
+        {% if active_panels == 4 %} {% set col_class = 'col-xl-3 col-lg-6' %}
+        {% elif active_panels == 3 %} {% set col_class = 'col-lg-4 col-md-6' %}
+        {% elif active_panels == 2 %} {% set col_class = 'col-md-6' %}
+        {% else %} {% set col_class = 'col-lg-8 mx-auto' %} {% endif %}
+    {% else %}
+        <!-- NVR 2x2 Grid -->
+        {% set container_width = '1100px' %}
+        {% if active_panels >= 2 %} {% set col_class = 'col-md-6' %}
+        {% else %} {% set col_class = 'col-lg-8 mx-auto' %} {% endif %}
+    {% endif %}
+
+    <div class="container" style="max-width: {{ container_width }};">
         
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
@@ -50,26 +74,6 @@
                 <a href="/logout" class="btn btn-outline-danger">🚪 Logout</a>
             </div>
         </div>
-        
-        <!-- Dynamic Layout Logic -->
-        {% set show_nut = state.nut_enabled %}
-        {% set show_wd = config.watchdog_ip or config.watchdog_ip_2 %}
-        {% set show_snmp = config.snmp_ip or config.snmp_ip_2 %}
-
-        {% set active_panels = 1 %}
-        {% if show_nut %}{% set active_panels = active_panels + 1 %}{% endif %}
-        {% if show_wd %}{% set active_panels = active_panels + 1 %}{% endif %}
-        {% if show_snmp %}{% set active_panels = active_panels + 1 %}{% endif %}
-
-        {% if active_panels == 4 %}
-            {% set col_class = 'col-xl-3 col-lg-6' %}
-        {% elif active_panels == 3 %}
-            {% set col_class = 'col-lg-4 col-md-6' %}
-        {% elif active_panels == 2 %}
-            {% set col_class = 'col-md-6' %}
-        {% else %}
-            {% set col_class = 'col-lg-8 mx-auto' %}
-        {% endif %}
 
         <div class="row g-4 justify-content-center">
             
