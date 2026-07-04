@@ -29,6 +29,11 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
 
+# --- Force Tailscale Routing Fix on Boot ---
+try:
+    subprocess.run(["tailscale", "set", "--accept-routes=true"], check=False)
+except: pass
+
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'wb') as kf: kf.write(Fernet.generate_key())
 
@@ -276,9 +281,7 @@ def config_page():
 
         new_ts_key = get_secure("ts_authkey")
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
-            try: 
-                # CHANGED TO ACCEPT ROUTES = TRUE FOR CLOUD VPS ROUTING
-                subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=true"], check=True)
+            try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=true"], check=True)
             except Exception as e: logging.error(f"Tailscale auth failed: {e}")
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
@@ -448,25 +451,28 @@ def poll_snmp():
 
             if ip:
                 try:
-                    res = subprocess.run(["snmpget", "-v2c", "-c", comm, "-O", "tq", "-t", "3", "-r", "1", ip, "1.3.6.1.2.1.1.3.0"], capture_output=True, text=True)
+                    res = subprocess.run(["snmpget", "-v2c", "-c", comm, "-O", "qv", "-t", "3", "-r", "1", ip, "1.3.6.1.2.1.1.3.0"], capture_output=True, text=True)
                     s_state["last_check"] = datetime.now().strftime("%I:%M:%S %p")
                     
                     if res.returncode == 0:
-                        ticks = int(res.stdout.strip())
-                        new_uptime_s = ticks / 100.0
-                        s_state["online"] = True
-                        
-                        if s_state["uptime_s"] is not None:
-                            if new_uptime_s < (s_state["uptime_s"] - 60):
-                                send_pushover("🔄 Hardware Reboot", f"{name} ({ip}) has rebooted.\nNew Uptime: {format_uptime(new_uptime_s)}", priority=0)
-                                hist = load_history()
-                                hist["snmp"].append({
-                                    "name": name, "ip": ip, "time": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
-                                    "old_uptime": format_uptime(s_state["uptime_s"])
-                                })
-                                save_history(hist)
+                        ticks_str = res.stdout.strip()
+                        try:
+                            ticks = int(re.search(r'\d+', ticks_str).group())
+                            new_uptime_s = ticks / 100.0
+                            s_state["online"] = True
+                            
+                            if s_state["uptime_s"] is not None:
+                                if new_uptime_s < (s_state["uptime_s"] - 60):
+                                    send_pushover("🔄 Hardware Reboot", f"{name} ({ip}) has rebooted.\nNew Uptime: {format_uptime(new_uptime_s)}", priority=0)
+                                    hist = load_history()
+                                    hist["snmp"].append({
+                                        "name": name, "ip": ip, "time": datetime.now().strftime("%Y-%m-%d %I:%M %p"),
+                                        "old_uptime": format_uptime(s_state["uptime_s"])
+                                    })
+                                    save_history(hist)
 
-                        s_state["uptime_s"] = new_uptime_s
+                            s_state["uptime_s"] = new_uptime_s
+                        except: s_state["online"] = False
                     else:
                         s_state["online"] = False
                 except Exception as e:
@@ -475,16 +481,12 @@ def poll_snmp():
                 s_state["online"] = False
                 s_state["uptime_s"] = None
                 
-        # Smart Wait allows instant re-polling when you edit SNMP IPs
         for _ in range(300):
             if app_config.get("snmp_ip") != c_ip1 or app_config.get("snmp_ip_2") != c_ip2: break
             time.sleep(1)
 
 def poll_watchdog():
     while True:
-        c_ip1 = app_config.get("watchdog_ip")
-        c_ip2 = app_config.get("watchdog_ip_2")
-        
         for w_id in ["1", "2"]:
             suffix = "" if w_id == "1" else "_2"
             ip = app_config.get(f"watchdog_ip{suffix}")
@@ -534,6 +536,8 @@ def poll_watchdog():
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
 
+        c_ip1 = app_config.get("watchdog_ip")
+        c_ip2 = app_config.get("watchdog_ip_2")
         for _ in range(60):
             if app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2: break
             time.sleep(1)
@@ -589,7 +593,7 @@ def poll_nut():
                         
                     if ups_state["alert_sent"]:
                         send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
-                    ups_state["alert_sent"] = False
+                        ups_state["alert_sent"] = False
 
         if c_host1:
             data1 = fetch_nut_data(c_host1, c_port1, c_names1)
