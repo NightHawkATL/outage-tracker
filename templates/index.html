@@ -221,7 +221,7 @@
                     <div class="d-flex flex-column gap-3 mt-2">
                         {% for s_id in ["1", "2"] %}
                             {% set ip = config.snmp_ip if s_id == "1" else config.snmp_ip_2 %}
-                            {% set name = config.snmp_name if s_id == "1" else config.snmp_name_2 %}
+                            {% set name = (config.snmp_name or "Hardware 1") if s_id == "1" else (config.snmp_name_2 or "Hardware 2") %}
                             {% set s_data = state.snmp[s_id] %}
                             
                             {% if ip %}
@@ -314,6 +314,8 @@
 
     </div>
 
+    <!-- Bootstrap Bundle (Required for Collapse feature) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function testPushover() {
             const btn = document.getElementById('pushTestBtn');
