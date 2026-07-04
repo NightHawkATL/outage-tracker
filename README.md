@@ -108,7 +108,7 @@ On your first boot, you will be met with a secure login screen.
 
 The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
-<img width="806" height="2368" alt="settings-blank2" src="https://github.com/user-attachments/assets/2331e2ee-3fd3-4e9d-a342-22be3c6bec4b" />
+<img width="796" height="2599" alt="settings-3" src="https://github.com/user-attachments/assets/e5ee5cbe-ab6d-494b-972a-9b44f60779aa" />
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
