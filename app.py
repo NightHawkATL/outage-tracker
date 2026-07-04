@@ -42,6 +42,7 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             cfg = json.load(f)
+            cfg.setdefault("timezone", "America/New_York")
             cfg.setdefault("map_url", "")
             cfg.setdefault("report_url", "")
             cfg.setdefault("mapbox_token", "")
@@ -68,7 +69,8 @@ def load_config():
     
     config = {
         "admin_username": "admin", "admin_password": cipher_suite.encrypt(b"admin").decode('utf-8'),
-        "session_timeout": 24, "company_name": "", "zip_code": "", "threshold_mins": 45,
+        "session_timeout": 24, "timezone": "America/New_York",
+        "company_name": "", "zip_code": "", "threshold_mins": 45,
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
         "nut_host_2": "", "nut_port_2": 3493, "nut_ups_names_2": "auto", "ups_min_runtime_2": 10,
@@ -98,6 +100,10 @@ def save_history(history):
     with open(HISTORY_FILE, 'w') as f: json.dump(history, f, indent=4)
 
 app_config = load_config()
+
+# Apply System Timezone
+os.environ['TZ'] = app_config.get("timezone", "America/New_York")
+time.tzset()
 
 state = {
     "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
@@ -248,6 +254,10 @@ def config_page():
         if new_username: app_config["admin_username"] = new_username
         if new_password: app_config["admin_password"] = cipher_suite.encrypt(new_password.encode('utf-8')).decode('utf-8')
 
+        new_tz = request.form.get("timezone", "America/New_York").strip()
+        os.environ['TZ'] = new_tz
+        time.tzset()
+
         new_ts_key = get_secure("ts_authkey")
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
             try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=false"], check=True)
@@ -270,6 +280,7 @@ def config_page():
 
         app_config.update({
             "session_timeout": int(request.form.get("session_timeout", 24)),
+            "timezone": new_tz,
             "company_name": request.form.get("company_name", "").strip(),
             "zip_code": zip_c,
             "threshold_mins": int(request.form.get("threshold_mins", 45)),
@@ -564,6 +575,7 @@ def poll_gp_outages():
         if url and zip_c:
             try:
                 req = requests.get(url, timeout=10)
+                
                 if req.status_code == 404 and map_url:
                     state["last_check"] = "🔧 Auto-Healing Link..."
                     logging.warning("API returned 404. Attempting auto-heal...")
