@@ -27,6 +27,44 @@ HISTORY_FILE = "data/history.json"
 KEY_DIR = "/app/auth_key"
 KEY_FILE = os.path.join(KEY_DIR, "secret.key")
 
+# --- Docker Hub Update Check (with caching) ---
+_update_cache = {"latest": None, "checked": 0, "error": None}
+_update_cache_lock = threading.Lock()
+DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
+DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=1&page=1&ordering=last_updated"
+_CACHE_TTL = 3600  # seconds (1 hour)
+
+def get_latest_dockerhub_tag():
+    now = time.time()
+    with _update_cache_lock:
+        if _update_cache["latest"] and now - _update_cache["checked"] < _CACHE_TTL:
+            return _update_cache["latest"], _update_cache["error"]
+        try:
+            resp = requests.get(DOCKERHUB_TAGS_URL, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", [])
+            if results:
+                # Find the first tag that is not 'latest'
+                tag = next((r["name"] for r in results if r["name"] != "latest"), None)
+                if tag:
+                    _update_cache["latest"] = tag
+                    _update_cache["error"] = None
+                else:
+                    tag = None
+                    _update_cache["latest"] = None
+                    _update_cache["error"] = "No versioned tags found"
+            else:
+                tag = None
+                _update_cache["latest"] = None
+                _update_cache["error"] = "No tags found"
+        except Exception as e:
+            tag = None
+            _update_cache["latest"] = None
+            _update_cache["error"] = str(e)
+        _update_cache["checked"] = now
+        return _update_cache["latest"], _update_cache["error"]
+
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
@@ -230,6 +268,19 @@ def logout():
     session.pop('logged_in', None)
     session.pop('login_time', None)
     return redirect(url_for('login_page'))
+
+@app.route('/api/update')
+@login_required
+def api_update():
+    latest, error = get_latest_dockerhub_tag()
+    current = APP_VERSION
+    update_available = latest and latest != current
+    return jsonify({
+        "current": current,
+        "latest": latest,
+        "update": update_available,
+        "error": error
+    })
 
 @app.route("/")
 @login_required
