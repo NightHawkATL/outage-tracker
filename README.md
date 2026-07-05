@@ -25,11 +25,14 @@ If you already have a UPS, why do you need to poll the power company and your in
 * **Auto-Discovery & Auto-Heal:** Simply provide the main outage map URL, and the app will automatically hunt down the hidden JSON APIs in the background. If the utility company rotates their URLs (which KUBRA does periodically), the app detects the `404` failure and instantly auto-heals its own configuration without you lifting a finger!
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
 * **Dual-WAN Watchdog:** Continuously pings up to two IP addresses (like your home Public IP or a Tailscale node) to monitor your home internet connection for downtime, with independent alerting.
+* **SNMP Monitoring:** Poll up to two SNMP devices (like network switches or routers) over your tailnet. You will be alerted when their exact 1.3.6.1.2.1.1.3.0 (sysUpTime) decreases, mathematically proving a reboot or loss of power occurred without needing to open external ports.
+* **Dynamic Full-Width Layout:** All pages dynamically stretch up to 1500px to offer widescreen views based on your preference. Supports both 1x4 Ultra-Wide rows or compact 2x2 NVR-style grids that automatically adjust depending on which modules you use.
 * **Smart UI Refresh:** To save network bandwidth, the dashboard quietly refreshes every 5 minutes when everything is normal. The exact second a grid outage or UPS event is detected, it shifts into high gear and refreshes every 30 seconds for real-time monitoring.
 * **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network.
 * **Zero-Knowledge Security:** Sensitive API tokens, VPN auth keys, and home coordinates are configured as "Write-Only" in the UI. Once saved, they are encrypted and hidden from the frontend to protect your data.
 * **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
-* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage, UPS battery event, and network downtime so you can review your infrastructure stability over time.
+* **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage, UPS battery event, hardware reboots, and network downtime so you can review your infrastructure stability over time. The view limits to the 2 most recent events to keep things tidy, with an option to load the full history logs.
+* **Built-in Time Zone:** The app manages internal clocks entirely from a UI dropdown meaning there is no longer a need to mount TZ data into Docker compose! 
 
 ---
 
