@@ -38,25 +38,13 @@ If you already have a UPS, why do you need to poll the power company and your in
 
 ## 📂 Folder Structure
 
-Before building the container, ensure your project directory looks like this:
+You only need the `compose.yaml` file to use the public image. Ensure your deployment directory looks like this:
 
 ```text
 outage-tracker/
-├── Dockerfile
 ├── compose.yaml
-├── requirements.txt
-├── app.py
-├── entrypoint.sh      
-├── reset_auth.py      <-- Password reset tool
 ├── auth_key/          <-- Auto-generated folder containing your secret decryption key
-├── static/
-│   ├── favicon.ico    <-- Your browser tab icon
-│   └── logo.svg       <-- Your custom header logo
-└── templates/
-    ├── config.html
-    ├── history.html
-    ├── index.html
-    └── login.html     <-- Secure login screen
+└── data/              <-- Auto-generated folder containing your database configs
 ```
 
 ---
