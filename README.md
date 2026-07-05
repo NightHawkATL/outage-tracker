@@ -63,9 +63,9 @@ outage-tracker/
 
 ## 🚀 Installation
 
-First, clone this repository to your Docker host and navigate into the folder:
+Create a new directory on your Docker host and navigate into it:
 ```bash
-git clone https://github.com/NightHawkATL/outage-tracker.git
+mkdir outage-tracker
 cd outage-tracker
 ```
 
@@ -76,7 +76,7 @@ Deploy via Docker Compose. The application uses persistent volumes to save your 
 ```yaml
 services:
   outage-tracker:
-    build: .
+    image: nighthawkatl/outage-tracker:latest
     container_name: outage-tracker
     restart: unless-stopped
     ports:
@@ -92,7 +92,7 @@ services:
 
 Start the container:
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 Once running, access the dashboard at `http://<YOUR-DOCKER-IP>:8080`.
 
