@@ -14,6 +14,8 @@ from flask import Flask, render_template, jsonify, request, redirect, url_for, s
 from cryptography.fernet import Fernet
 
 app = Flask(__name__)
+APP_VERSION = os.environ.get("APP_VERSION", "dev")
+
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=3650) 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
@@ -249,7 +251,7 @@ def index():
         for ups in state["ups_data"].values():
             if "OB" in ups.get("status", ""): event_active = True
                 
-    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active, format_uptime=format_uptime)
+    return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active, format_uptime=format_uptime, app_version=APP_VERSION)
 
 @app.route("/history")
 @login_required

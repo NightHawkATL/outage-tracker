@@ -17,6 +17,10 @@ COPY static/ static/
 
 RUN chmod +x entrypoint.sh
 
+# Set version last so dependency layers are not invalidated on version changes
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 EXPOSE 8080
 
 CMD ["./entrypoint.sh"]

@@ -55,7 +55,7 @@
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
-                <span class="d-none d-sm-inline">Outage Tracker</span>
+                <span class="d-none d-sm-inline">Outage Tracker</span> <span class="badge bg-secondary ms-2 fs-6">{{ app_version }}</span>
             </h2>
             
             {% if config.ts_authkey %}
