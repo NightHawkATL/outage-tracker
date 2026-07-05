@@ -1,0 +1,41 @@
+name: Weekly Security Scan
+
+on:
+  schedule:
+    - cron: '0 6 * * 3' # 6 AM every Wednesday
+  workflow_dispatch:
+
+jobs:
+  scan:
+    name: Grype CVE Scan & Remediation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: pre-update-release
+
+      - name: Build Docker Image
+        run: docker build -t local-scan-image .
+
+      - name: Run Grype Scan
+        id: scan
+        uses: anchore/scan-action@v3
+        with:
+          image: local-scan-image
+          fail-build: false
+          output-format: sarif
+          severity-cutoff: high
+
+      - name: Create PR for Remediation
+        if: steps.scan.outputs.sarif != ''
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "Auto-Remediation: Vulnerabilities detected by Grype"
+          body: "Automated PR to address high/critical CVEs."
+          branch: "security/grype-remediation"
+          base: "pre-update-release"

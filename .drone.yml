@@ -1,5 +1,30 @@
 ---
-# Pipeline: Ollama Automated PR Review
+# Pipeline 1: Smoke test on every push and pull request
+kind: pipeline
+type: docker
+name: smoke-test
+
+platform:
+  os: linux
+  arch: arm64
+
+trigger:
+  event:
+    - push
+    - pull_request
+
+steps:
+  - name: install-and-compile-check
+    image: python:3.11-alpine
+    commands:
+      - apk add --no-cache gcc musl-dev libffi-dev openssl-dev
+      - python -V
+      - pip install --no-cache-dir -r requirements.txt
+      - python -m py_compile app.py reset_auth.py
+      - echo "Smoke test passed"
+
+---
+# Pipeline 2: Ollama Automated PR Review
 kind: pipeline
 type: docker
 name: ollama-pr-review
@@ -14,7 +39,7 @@ trigger:
 
 steps:
   - name: run-ollama-review
-    image: python:3.13-alpine
+    image: python:3.11-alpine
     failure: ignore
     environment:
       GITEA_SERVER:
