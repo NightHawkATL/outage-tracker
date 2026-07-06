@@ -239,7 +239,7 @@ sudo ufw allow from 10.0.0.0/8 to any port 3493
 ```
 
 ### 3. The "Tailscale Route Hijack" Fix
-If local devices (like Home Assistant on VLAN 103) suddenly lose access to your NUT server (on VLAN 1) after installing Tailscale, you are likely experiencing **Asymmetric Routing**. The NUT server receives the local packet, but attempts to send the reply back *through* the Tailscale tunnel instead of your physical router.
+If local devices suddenly lose access to your NUT server (if it is on a different VLAN) after installing Tailscale, you are likely experiencing **Asymmetric Routing**. The NUT server receives the local packet, but attempts to send the reply back *through* the Tailscale tunnel instead of your physical router.
 
 To fix this, disable route acceptance on the NUT server so it ignores Tailscale subnets and respects your physical router's routing table:
 ```bash
