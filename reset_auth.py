@@ -1,16 +1,8 @@
 import json
 import os
-from cryptography.fernet import Fernet
+from werkzeug.security import generate_password_hash
 
 CONFIG_FILE = "data/config.json"
-KEY_FILE = "/app/auth_key/secret.key"
-
-if not os.path.exists(KEY_FILE):
-    print("❌ Critical Error: Encryption key not found. Has the app been run yet?")
-    exit(1)
-
-with open(KEY_FILE, 'rb') as kf:
-    cipher = Fernet(kf.read())
 
 if os.path.exists(CONFIG_FILE):
     with open(CONFIG_FILE, 'r') as f:
@@ -20,7 +12,7 @@ else:
 
 # Reset back to default admin / admin
 config["admin_username"] = "admin"
-config["admin_password"] = cipher.encrypt(b"admin").decode('utf-8')
+config["admin_password"] = generate_password_hash("admin")
 
 with open(CONFIG_FILE, 'w') as f:
     json.dump(config, f, indent=4)
