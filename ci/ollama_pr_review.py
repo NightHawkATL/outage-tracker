@@ -110,28 +110,70 @@ def build_diff_payload(files: list[dict[str, Any]], max_chars: int = 24000) -> s
     return output
 
 
-def ask_ollama(ollama_url: str, model: str, repo: str, pr_number: str, diff_text: str) -> str:
+def looks_like_refusal(text: str) -> bool:
+    normalized = text.strip().lower()
+    refusal_markers = [
+        "i'm sorry",
+        "i am sorry",
+        "can't assist",
+        "cannot assist",
+        "can't help",
+        "cannot help",
+        "can't comply",
+        "cannot comply",
+        "unable to assist",
+        '"response": "i\'m sorry',
+    ]
+    return any(marker in normalized for marker in refusal_markers)
+
+
+def ask_ollama(
+    ollama_url: str,
+    model: str,
+    repo: str,
+    pr_number: str,
+    diff_text: str,
+    *,
+    retry: bool = False,
+) -> str:
     endpoint = ollama_url.rstrip("/") + "/api/chat"
-    system_prompt = (
-        "You are a senior code reviewer. Analyze only the diff provided. "
-        "Report only findings that are directly observable in the changed lines — do not infer, "
-        "assume, or hallucinate behavior about code not present in the diff. "
-        "If a concern depends on context outside the diff, note it as 'unverifiable without full context'. "
-        "Do not report issues that are already handled in the diff. "
-        "Focus on: correctness bugs, real security flaws (cite the specific line), "
-        "performance regressions, and missing error handling for shown code paths. "
-        "If no high-confidence issues exist, say so explicitly."
-    )
-    user_prompt = (
-        f"Repository: {repo}\n"
-        f"PR: {pr_number}\n\n"
-        "Review the following diff and provide:\n"
-        "1) Critical/High findings first\n"
-        "2) Medium findings\n"
-        "3) A short summary\n"
-        "If no high-confidence issues exist, say that explicitly.\n\n"
-        f"DIFF:\n{diff_text}"
-    )
+    if retry:
+        system_prompt = (
+            "You are reviewing an authorized software pull request. "
+            "Perform only a code review of the diff. "
+            "Do not discuss safety policy, refusal policy, or general advice. "
+            "Return concise markdown only. "
+            "Report only concrete bugs, regressions, missing validation, or security issues visible in the diff. "
+            "If there are no high-confidence findings, reply exactly: No findings."
+        )
+        user_prompt = (
+            f"Repository: {repo}\n"
+            f"PR: {pr_number}\n\n"
+            "Task: Review this authorized code diff only.\n"
+            "Output format:\n"
+            "- If issues exist, list them as bullets with severity and file context.\n"
+            "- If no issues exist, reply exactly: No findings.\n\n"
+            f"DIFF:\n{diff_text}"
+        )
+    else:
+        system_prompt = (
+            "You are a senior code reviewer. Analyze only the diff provided. "
+            "Report only findings that are directly observable in the changed lines; do not infer, assume, or hallucinate behavior about code not present in the diff. "
+            "If a concern depends on context outside the diff, note it as 'unverifiable without full context'. "
+            "Do not report issues that are already handled in the diff. "
+            "Focus on correctness bugs, real security flaws with file context, performance regressions, and missing error handling for shown code paths. "
+            "Do not include policy commentary or refusals. "
+            "If no high-confidence issues exist, reply exactly: No findings."
+        )
+        user_prompt = (
+            f"Repository: {repo}\n"
+            f"PR: {pr_number}\n\n"
+            "Review the following diff and provide either:\n"
+            "- a concise markdown list of concrete findings ordered by severity, or\n"
+            "- exactly 'No findings.' if nothing is wrong.\n\n"
+            "Only mention issues supported by the diff.\n\n"
+            f"DIFF:\n{diff_text}"
+        )
 
     payload = {
         "model": model,
@@ -147,6 +189,10 @@ def ask_ollama(ollama_url: str, model: str, repo: str, pr_number: str, diff_text
     content = message.get("content", "").strip()
     if not content:
         raise RuntimeError("Ollama returned an empty response")
+    if looks_like_refusal(content):
+        if retry:
+            raise RuntimeError(f"Ollama refused the review request: {content}")
+        return ask_ollama(ollama_url, model, repo, pr_number, diff_text, retry=True)
     return content
 
 
