@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from cryptography.fernet import Fernet
+from werkzeug.security import generate_password_hash, check_password_hash
 import paho.mqtt.publish as mqtt_publish
 
 app = Flask(__name__)
@@ -153,11 +154,12 @@ def load_config():
             
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
-                cfg["admin_password"] = cipher_suite.encrypt(b"admin").decode('utf-8')
+            if not cfg.get("admin_password"):
+                cfg["admin_password"] = generate_password_hash("admin")
             return cfg
     
     config = {
-        "admin_username": "admin", "admin_password": cipher_suite.encrypt(b"admin").decode('utf-8'),
+        "admin_username": "admin", "admin_password": generate_password_hash("admin"),
         "session_timeout": 24, "timezone": "America/New_York",
         "ui_layout": "2x2", "ui_text_size": "15px",
         "company_name": "", "zip_code": "", "threshold_mins": 45,
@@ -251,6 +253,31 @@ def decrypt_if_possible(value):
         return cipher_suite.decrypt(value.encode('utf-8')).decode('utf-8')
     except Exception:
         return value
+
+
+def is_password_hash(value):
+    if not value:
+        return False
+    text = str(value)
+    return text.startswith(("pbkdf2:", "scrypt:", "argon2:"))
+
+
+def verify_admin_password(stored_value, provided_password):
+    if not stored_value:
+        return False
+
+    if is_password_hash(stored_value):
+        try:
+            return check_password_hash(stored_value, provided_password)
+        except Exception:
+            return False
+
+    try:
+        decrypted = cipher_suite.decrypt(str(stored_value).encode('utf-8')).decode('utf-8')
+        return provided_password == decrypted
+    except Exception:
+        # Backward compatibility for legacy plaintext reset values.
+        return provided_password == str(stored_value)
 
 def mqtt_enabled():
     return bool(app_config.get("mqtt_host", "").strip())
@@ -598,9 +625,11 @@ def login_page():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         cfg_user = app_config.get("admin_username")
-        try: cfg_pass = cipher_suite.decrypt(app_config.get("admin_password").encode('utf-8')).decode('utf-8')
-        except Exception: cfg_pass = "admin" 
-        if username == cfg_user and password == cfg_pass:
+        cfg_pass = app_config.get("admin_password", "")
+        if username == cfg_user and verify_admin_password(cfg_pass, password):
+            if not is_password_hash(cfg_pass):
+                app_config["admin_password"] = generate_password_hash(password)
+                save_config(app_config)
             session.permanent = True
             session['logged_in'] = True
             session['login_time'] = time.time()
@@ -681,7 +710,7 @@ def config_page():
         new_username = request.form.get("admin_username", "").strip()
         new_password = request.form.get("admin_password", "")
         if new_username: app_config["admin_username"] = new_username
-        if new_password: app_config["admin_password"] = cipher_suite.encrypt(new_password.encode('utf-8')).decode('utf-8')
+        if new_password: app_config["admin_password"] = generate_password_hash(new_password)
 
         new_tz = request.form.get("timezone", "America/New_York").strip()
         os.environ['TZ'] = new_tz
