@@ -162,6 +162,7 @@ If you want the live dashboard state in Home Assistant, install the **Mosquitto 
 
 <img width="378" height="138" alt="image" src="https://github.com/user-attachments/assets/9fcf44f3-c966-4949-9207-36c52fb4ab40" />
 
+
 <img width="1298" height="1321" alt="mqtt" src="https://github.com/user-attachments/assets/b50144fd-f2bd-4deb-9ee7-5d391972a44c" />
 
 ---
