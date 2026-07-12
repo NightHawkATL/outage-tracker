@@ -36,13 +36,41 @@ MQTT_DISCOVERY_STATE = {"signature": None, "published_at": 0}
 _update_cache = {"latest": None, "checked": 0, "error": None}
 _update_cache_lock = threading.Lock()
 DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
-DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=1&page=1&ordering=last_updated"
+DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=50&page=1&ordering=last_updated"
 _CACHE_TTL = 3600  # seconds (1 hour)
+
+
+def parse_semver_tag(tag):
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", str(tag).strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def newest_versioned_tag(tag_names):
+    candidates = []
+    for name in tag_names:
+        parsed = parse_semver_tag(name)
+        if parsed is not None:
+            candidates.append((parsed, name))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def update_available(current_tag, latest_tag):
+    current_semver = parse_semver_tag(current_tag)
+    latest_semver = parse_semver_tag(latest_tag)
+
+    if current_semver is not None and latest_semver is not None:
+        return latest_semver > current_semver
+
+    return bool(latest_tag) and str(latest_tag).strip() != str(current_tag).strip()
 
 def get_latest_dockerhub_tag():
     now = time.time()
     with _update_cache_lock:
-        if _update_cache["latest"] and now - _update_cache["checked"] < _CACHE_TTL:
+        if _update_cache["checked"] and now - _update_cache["checked"] < _CACHE_TTL:
             return _update_cache["latest"], _update_cache["error"]
         try:
             resp = requests.get(DOCKERHUB_TAGS_URL, timeout=5)
@@ -50,15 +78,15 @@ def get_latest_dockerhub_tag():
             data = resp.json()
             results = data.get("results", [])
             if results:
-                # Find the first tag that is not 'latest'
-                tag = next((r["name"] for r in results if r["name"] != "latest"), None)
+                tag_names = [r.get("name", "") for r in results if r.get("name")]
+                tag = newest_versioned_tag(tag_names)
                 if tag:
                     _update_cache["latest"] = tag
                     _update_cache["error"] = None
                 else:
                     tag = None
                     _update_cache["latest"] = None
-                    _update_cache["error"] = "No versioned tags found"
+                    _update_cache["error"] = "No semantic version tags found"
             else:
                 tag = None
                 _update_cache["latest"] = None
@@ -620,11 +648,11 @@ def logout():
 def api_update():
     latest, error = get_latest_dockerhub_tag()
     current = APP_VERSION
-    update_available = latest and latest != current
+    has_update = update_available(current, latest)
     return jsonify({
         "current": current,
         "latest": latest,
-        "update": update_available,
+        "update": has_update,
         "error": error
     })
 
