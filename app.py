@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from cryptography.fernet import Fernet
+from werkzeug.security import generate_password_hash, check_password_hash
 import paho.mqtt.publish as mqtt_publish
 
 app = Flask(__name__)
@@ -35,13 +36,41 @@ MQTT_DISCOVERY_STATE = {"signature": None, "published_at": 0}
 _update_cache = {"latest": None, "checked": 0, "error": None}
 _update_cache_lock = threading.Lock()
 DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
-DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=1&page=1&ordering=last_updated"
+DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=50&page=1&ordering=last_updated"
 _CACHE_TTL = 3600  # seconds (1 hour)
+
+
+def parse_semver_tag(tag):
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", str(tag).strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def newest_versioned_tag(tag_names):
+    candidates = []
+    for name in tag_names:
+        parsed = parse_semver_tag(name)
+        if parsed is not None:
+            candidates.append((parsed, name))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def update_available(current_tag, latest_tag):
+    current_semver = parse_semver_tag(current_tag)
+    latest_semver = parse_semver_tag(latest_tag)
+
+    if current_semver is not None and latest_semver is not None:
+        return latest_semver > current_semver
+
+    return bool(latest_tag) and str(latest_tag).strip() != str(current_tag).strip()
 
 def get_latest_dockerhub_tag():
     now = time.time()
     with _update_cache_lock:
-        if _update_cache["latest"] and now - _update_cache["checked"] < _CACHE_TTL:
+        if _update_cache["checked"] and now - _update_cache["checked"] < _CACHE_TTL:
             return _update_cache["latest"], _update_cache["error"]
         try:
             resp = requests.get(DOCKERHUB_TAGS_URL, timeout=5)
@@ -49,15 +78,15 @@ def get_latest_dockerhub_tag():
             data = resp.json()
             results = data.get("results", [])
             if results:
-                # Find the first tag that is not 'latest'
-                tag = next((r["name"] for r in results if r["name"] != "latest"), None)
+                tag_names = [r.get("name", "") for r in results if r.get("name")]
+                tag = newest_versioned_tag(tag_names)
                 if tag:
                     _update_cache["latest"] = tag
                     _update_cache["error"] = None
                 else:
                     tag = None
                     _update_cache["latest"] = None
-                    _update_cache["error"] = "No versioned tags found"
+                    _update_cache["error"] = "No semantic version tags found"
             else:
                 tag = None
                 _update_cache["latest"] = None
@@ -125,11 +154,12 @@ def load_config():
             
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
-                cfg["admin_password"] = cipher_suite.encrypt(b"admin").decode('utf-8')
+            if not cfg.get("admin_password"):
+                cfg["admin_password"] = generate_password_hash("admin")
             return cfg
     
     config = {
-        "admin_username": "admin", "admin_password": cipher_suite.encrypt(b"admin").decode('utf-8'),
+        "admin_username": "admin", "admin_password": generate_password_hash("admin"),
         "session_timeout": 24, "timezone": "America/New_York",
         "ui_layout": "2x2", "ui_text_size": "15px",
         "company_name": "", "zip_code": "", "threshold_mins": 45,
@@ -223,6 +253,31 @@ def decrypt_if_possible(value):
         return cipher_suite.decrypt(value.encode('utf-8')).decode('utf-8')
     except Exception:
         return value
+
+
+def is_password_hash(value):
+    if not value:
+        return False
+    text = str(value)
+    return text.startswith(("pbkdf2:", "scrypt:", "argon2:"))
+
+
+def verify_admin_password(stored_value, provided_password):
+    if not stored_value:
+        return False
+
+    if is_password_hash(stored_value):
+        try:
+            return check_password_hash(stored_value, provided_password)
+        except Exception:
+            return False
+
+    try:
+        decrypted = cipher_suite.decrypt(str(stored_value).encode('utf-8')).decode('utf-8')
+        return provided_password == decrypted
+    except Exception:
+        # Backward compatibility for legacy plaintext reset values.
+        return provided_password == str(stored_value)
 
 def mqtt_enabled():
     return bool(app_config.get("mqtt_host", "").strip())
@@ -570,9 +625,11 @@ def login_page():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         cfg_user = app_config.get("admin_username")
-        try: cfg_pass = cipher_suite.decrypt(app_config.get("admin_password").encode('utf-8')).decode('utf-8')
-        except Exception: cfg_pass = "admin" 
-        if username == cfg_user and password == cfg_pass:
+        cfg_pass = app_config.get("admin_password", "")
+        if username == cfg_user and verify_admin_password(cfg_pass, password):
+            if not is_password_hash(cfg_pass):
+                app_config["admin_password"] = generate_password_hash(password)
+                save_config(app_config)
             session.permanent = True
             session['logged_in'] = True
             session['login_time'] = time.time()
@@ -591,11 +648,11 @@ def logout():
 def api_update():
     latest, error = get_latest_dockerhub_tag()
     current = APP_VERSION
-    update_available = latest and latest != current
+    has_update = update_available(current, latest)
     return jsonify({
         "current": current,
         "latest": latest,
-        "update": update_available,
+        "update": has_update,
         "error": error
     })
 
@@ -653,7 +710,7 @@ def config_page():
         new_username = request.form.get("admin_username", "").strip()
         new_password = request.form.get("admin_password", "")
         if new_username: app_config["admin_username"] = new_username
-        if new_password: app_config["admin_password"] = cipher_suite.encrypt(new_password.encode('utf-8')).decode('utf-8')
+        if new_password: app_config["admin_password"] = generate_password_hash(new_password)
 
         new_tz = request.form.get("timezone", "America/New_York").strip()
         os.environ['TZ'] = new_tz
