@@ -15,9 +15,8 @@ trigger:
 
 steps:
   - name: install-and-compile-check
-    image: python:3.11-alpine
+    image: python:3.11-slim
     commands:
-      - apk add --no-cache gcc musl-dev libffi-dev openssl-dev
       - python -V
       - pip install --no-cache-dir -r requirements.txt
       - python -m py_compile app.py reset_auth.py

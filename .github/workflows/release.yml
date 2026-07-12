@@ -1,4 +1,4 @@
-name: Publish Release
+name: Publish GitHub Release
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
 
 jobs:
   release:
-    name: Create Gitea Release
+    if: github.server_url == 'https://github.com'
+    name: Create GitHub Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,53 +16,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
       
-      - name: Create Release
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_SERVER_URL: ${{ github.server_url }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -eu
 
-          api_url="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
-
-          status_code=$(curl -sS -o /tmp/release_check.json -w "%{http_code}" \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
-            -H "Accept: application/json" \
-            "$api_url")
-
-          if [ "$status_code" = "200" ]; then
-            echo "Release for tag ${GITHUB_REF_NAME} already exists; nothing to do."
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "GitHub release for tag ${GITHUB_REF_NAME} already exists; nothing to do."
             exit 0
           fi
 
-          create_url="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/releases"
-          payload=$(cat <<EOF
-          {
-            "tag_name": "${GITHUB_REF_NAME}",
-            "target_commitish": "${GITHUB_SHA}",
-            "name": "${GITHUB_REF_NAME}",
-            "body": "Automated release created from tag ${GITHUB_REF_NAME}.",
-            "draft": false,
-            "prerelease": false
-          }
-          EOF
-          )
-
-          create_status=$(curl -sS -o /tmp/release_create.json -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
-            -d "$payload" \
-            "$create_url")
-
-          if [ "$create_status" != "201" ]; then
-            echo "Failed to create release (HTTP ${create_status})"
-            cat /tmp/release_create.json
-            exit 1
-          fi
-
-          echo "Release created successfully for ${GITHUB_REF_NAME}."
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
