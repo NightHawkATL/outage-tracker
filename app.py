@@ -8,10 +8,12 @@ import json
 import subprocess
 import re
 import urllib.parse
+import hashlib
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from cryptography.fernet import Fernet
+import paho.mqtt.publish as mqtt_publish
 
 app = Flask(__name__)
 APP_VERSION = os.environ.get("APP_VERSION", "dev")
@@ -26,6 +28,8 @@ CONFIG_FILE = "data/config.json"
 HISTORY_FILE = "data/history.json"
 KEY_DIR = "/app/auth_key"
 KEY_FILE = os.path.join(KEY_DIR, "secret.key")
+MQTT_PUBLISH_LOCK = threading.Lock()
+MQTT_DISCOVERY_STATE = {"signature": None, "published_at": 0}
 
 # --- Docker Hub Update Check (with caching) ---
 _update_cache = {"latest": None, "checked": 0, "error": None}
@@ -112,6 +116,12 @@ def load_config():
             cfg.setdefault("snmp_ip_2", "")
             cfg.setdefault("snmp_name_2", "")
             cfg.setdefault("snmp_community_2", "public")
+            cfg.setdefault("mqtt_host", "")
+            cfg.setdefault("mqtt_port", 1883)
+            cfg.setdefault("mqtt_username", "")
+            cfg.setdefault("mqtt_password", "")
+            cfg.setdefault("mqtt_topic_prefix", "outage_tracker")
+            cfg.setdefault("mqtt_discovery_prefix", "homeassistant")
             
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
@@ -131,7 +141,9 @@ def load_config():
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
-        "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5
+        "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5,
+        "mqtt_host": "", "mqtt_port": 1883, "mqtt_username": "", "mqtt_password": "",
+        "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant"
     }
     save_config(config)
     return config
@@ -199,6 +211,311 @@ def format_uptime(seconds):
     if days > 0: return f"{days}d {hours}h {mins}m"
     if hours > 0: return f"{hours}h {mins}m"
     return f"{mins} mins"
+
+def sanitize_topic_part(value):
+    slug = re.sub(r'[^a-z0-9_]+', '_', str(value).strip().lower())
+    return slug.strip('_') or "unknown"
+
+def decrypt_if_possible(value):
+    if not value:
+        return ""
+    try:
+        return cipher_suite.decrypt(value.encode('utf-8')).decode('utf-8')
+    except Exception:
+        return value
+
+def mqtt_enabled():
+    return bool(app_config.get("mqtt_host", "").strip())
+
+def mqtt_device_info():
+    return {
+        "identifiers": ["outage_tracker"],
+        "name": "Outage Tracker",
+        "manufacturer": "NightHawk-ATL",
+        "model": "Outage Tracker",
+        "sw_version": APP_VERSION,
+    }
+
+def mqtt_auth_config():
+    username = app_config.get("mqtt_username", "").strip()
+    password = decrypt_if_possible(app_config.get("mqtt_password", ""))
+    if username:
+        return {"username": username, "password": password}
+    return None
+
+def build_dashboard_snapshot():
+    now = datetime.now()
+    watchdogs = {}
+    for w_id in ["1", "2"]:
+        wd_state = state["watchdogs"][w_id]
+        duration = 0
+        if not wd_state.get("online", True) and wd_state.get("down_time"):
+            duration = int((now - wd_state["down_time"]).total_seconds() / 60)
+        watchdogs[w_id] = {
+            "online": wd_state.get("online", True),
+            "alert_sent": wd_state.get("alert_sent", False),
+            "down_minutes": duration,
+            "target": app_config.get("watchdog_ip" if w_id == "1" else "watchdog_ip_2", ""),
+            "port": app_config.get("watchdog_port" if w_id == "1" else "watchdog_port_2", 80),
+        }
+
+    snmp_devices = {}
+    for s_id in ["1", "2"]:
+        snmp_state = state["snmp"][s_id]
+        suffix = "" if s_id == "1" else "_2"
+        snmp_devices[s_id] = {
+            "online": snmp_state.get("online", False),
+            "uptime_seconds": snmp_state.get("uptime_s"),
+            "uptime_human": format_uptime(snmp_state.get("uptime_s")),
+            "last_check": snmp_state.get("last_check"),
+            "name": app_config.get(f"snmp_name{suffix}") or f"Hardware {s_id}",
+            "ip": app_config.get(f"snmp_ip{suffix}", ""),
+        }
+
+    ups = {}
+    ups_on_battery = 0
+    for ups_name, ups_state in state["ups_data"].items():
+        status = ups_state.get("status", "UNKNOWN")
+        if "OB" in status:
+            ups_on_battery += 1
+        ups[ups_name] = {
+            "status": status,
+            "charge": ups_state.get("charge"),
+            "runtime_mins": ups_state.get("runtime_mins"),
+            "alert_sent": ups_state.get("alert_sent", False),
+            "on_battery": "OB" in status,
+        }
+
+    overall_status = "ok"
+    if state.get("error_msg"):
+        overall_status = "error"
+    elif state.get("is_outage") or ups_on_battery > 0:
+        overall_status = "alert"
+    elif any(not item["online"] for item in watchdogs.values() if item["target"]) or any(
+        not item["online"] for item in snmp_devices.values() if item["ip"]
+    ):
+        overall_status = "warning"
+
+    return {
+        "system": {
+            "app_version": APP_VERSION,
+            "timezone": app_config.get("timezone", "America/New_York"),
+            "tailscale_status": get_ts_status(),
+            "overall_status": overall_status,
+            "published_at": now.isoformat(),
+        },
+        "grid": {
+            "company": app_config.get("company_name", "Utility"),
+            "zip_code": app_config.get("zip_code", ""),
+            "is_outage": state.get("is_outage", False),
+            "customers_affected": state.get("customers_affected", 0),
+            "etr": state.get("etr", "Unavailable"),
+            "last_check": state.get("last_check"),
+            "error": state.get("error_msg"),
+        },
+        "nut": {
+            "enabled": state.get("nut_enabled", False),
+            "last_check": state.get("nut_last_check"),
+            "error": state.get("nut_error"),
+            "ups_on_battery": ups_on_battery,
+            "ups": ups,
+        },
+        "watchdog": {
+            "last_check": state.get("watchdog_last_check"),
+            "targets": watchdogs,
+        },
+        "snmp": {
+            "devices": snmp_devices,
+        },
+    }
+
+def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
+    topic_prefix = app_config.get("mqtt_topic_prefix", "outage_tracker").strip() or "outage_tracker"
+    discovery_prefix = app_config.get("mqtt_discovery_prefix", "homeassistant").strip() or "homeassistant"
+    summary_topic = f"{topic_prefix}/summary"
+    device = mqtt_device_info()
+    messages = [{"topic": summary_topic, "payload": json.dumps(snapshot), "retain": True, "qos": 1}]
+
+    discovery_signature = hashlib.sha256(
+        json.dumps(
+            {
+                "summary_topic": summary_topic,
+                "discovery_prefix": discovery_prefix,
+                "ups_names": sorted(snapshot["nut"]["ups"].keys()),
+            },
+            sort_keys=True,
+        ).encode('utf-8')
+    ).hexdigest()
+    should_publish_discovery = force_discovery or MQTT_DISCOVERY_STATE["signature"] != discovery_signature
+
+    if should_publish_discovery:
+        discovery_entities = [
+            {
+                "component": "sensor",
+                "object_id": "overall_status",
+                "name": "Overall Status",
+                "value_template": "{{ value_json.system.overall_status }}",
+                "icon": "mdi:state-machine",
+            },
+            {
+                "component": "binary_sensor",
+                "object_id": "grid_outage",
+                "name": "Grid Outage Active",
+                "value_template": "{{ value_json.grid.is_outage | string | lower }}",
+                "payload_on": "true",
+                "payload_off": "false",
+                "device_class": "problem",
+            },
+            {
+                "component": "sensor",
+                "object_id": "grid_customers_affected",
+                "name": "Grid Customers Affected",
+                "value_template": "{{ value_json.grid.customers_affected }}",
+                "icon": "mdi:transmission-tower-off",
+            },
+            {
+                "component": "sensor",
+                "object_id": "grid_etr",
+                "name": "Grid Estimated Restoration",
+                "value_template": "{{ value_json.grid.etr }}",
+                "icon": "mdi:clock-outline",
+            },
+            {
+                "component": "sensor",
+                "object_id": "tailscale_status",
+                "name": "Tailscale Status",
+                "value_template": "{{ value_json.system.tailscale_status }}",
+                "icon": "mdi:vpn",
+            },
+            {
+                "component": "sensor",
+                "object_id": "ups_on_battery_count",
+                "name": "UPS On Battery Count",
+                "value_template": "{{ value_json.nut.ups_on_battery }}",
+                "icon": "mdi:battery-alert",
+            },
+            {
+                "component": "sensor",
+                "object_id": "nut_error",
+                "name": "UPS Error",
+                "value_template": "{{ value_json.nut.error | default('', true) }}",
+                "icon": "mdi:alert-circle-outline",
+            },
+            {
+                "component": "binary_sensor",
+                "object_id": "watchdog_primary_online",
+                "name": "Primary Watchdog Online",
+                "value_template": "{{ value_json.watchdog.targets['1'].online | string | lower }}",
+                "payload_on": "true",
+                "payload_off": "false",
+                "device_class": "connectivity",
+            },
+            {
+                "component": "binary_sensor",
+                "object_id": "watchdog_secondary_online",
+                "name": "Secondary Watchdog Online",
+                "value_template": "{{ value_json.watchdog.targets['2'].online | string | lower }}",
+                "payload_on": "true",
+                "payload_off": "false",
+                "device_class": "connectivity",
+            },
+            {
+                "component": "binary_sensor",
+                "object_id": "snmp_primary_online",
+                "name": "SNMP Primary Online",
+                "value_template": "{{ value_json.snmp.devices['1'].online | string | lower }}",
+                "payload_on": "true",
+                "payload_off": "false",
+                "device_class": "connectivity",
+            },
+            {
+                "component": "binary_sensor",
+                "object_id": "snmp_secondary_online",
+                "name": "SNMP Secondary Online",
+                "value_template": "{{ value_json.snmp.devices['2'].online | string | lower }}",
+                "payload_on": "true",
+                "payload_off": "false",
+                "device_class": "connectivity",
+            },
+        ]
+
+        for entity in discovery_entities:
+            discovery_topic = f"{discovery_prefix}/{entity['component']}/outage_tracker/{entity['object_id']}/config"
+            payload = {
+                "name": entity["name"],
+                "unique_id": f"outage_tracker_{entity['object_id']}",
+                "state_topic": summary_topic,
+                "value_template": entity["value_template"],
+                "device": device,
+                "object_id": f"outage_tracker_{entity['object_id']}",
+            }
+            for key in ["icon", "device_class", "payload_on", "payload_off"]:
+                if key in entity:
+                    payload[key] = entity[key]
+            messages.append({"topic": discovery_topic, "payload": json.dumps(payload), "retain": True, "qos": 1})
+
+        for ups_name in sorted(snapshot["nut"]["ups"].keys()):
+            ups_slug = sanitize_topic_part(ups_name)
+            ups_topic = f"{topic_prefix}/ups/{ups_slug}"
+            messages.append({
+                "topic": ups_topic,
+                "payload": json.dumps(snapshot["nut"]["ups"][ups_name]),
+                "retain": True,
+                "qos": 1,
+            })
+            for field, label, component in [
+                ("status", "Status", "sensor"),
+                ("charge", "Charge", "sensor"),
+                ("runtime_mins", "Runtime Minutes", "sensor"),
+                ("on_battery", "On Battery", "binary_sensor"),
+            ]:
+                object_id = f"ups_{ups_slug}_{field}"
+                discovery_topic = f"{discovery_prefix}/{component}/outage_tracker/{object_id}/config"
+                payload = {
+                    "name": f"UPS {ups_name} {label}",
+                    "unique_id": f"outage_tracker_{object_id}",
+                    "state_topic": ups_topic,
+                    "value_template": f"{{{{ value_json.{field} }}}}",
+                    "device": device,
+                    "object_id": f"outage_tracker_{object_id}",
+                }
+                if field == "charge":
+                    payload["unit_of_measurement"] = "%"
+                    payload["icon"] = "mdi:battery"
+                elif field == "runtime_mins":
+                    payload["unit_of_measurement"] = "min"
+                    payload["icon"] = "mdi:battery-clock"
+                elif field == "status":
+                    payload["icon"] = "mdi:battery-heart-variant"
+                else:
+                    payload["device_class"] = "battery"
+                    payload["payload_on"] = "True"
+                    payload["payload_off"] = "False"
+                messages.append({"topic": discovery_topic, "payload": json.dumps(payload), "retain": True, "qos": 1})
+
+        MQTT_DISCOVERY_STATE["signature"] = discovery_signature
+        MQTT_DISCOVERY_STATE["published_at"] = time.time()
+
+    return messages
+
+def publish_mqtt_status(force_discovery=False):
+    if not mqtt_enabled():
+        return
+
+    with MQTT_PUBLISH_LOCK:
+        try:
+            snapshot = build_dashboard_snapshot()
+            messages = mqtt_messages_for_snapshot(snapshot, force_discovery=force_discovery)
+            mqtt_publish.multiple(
+                messages,
+                hostname=app_config.get("mqtt_host", "").strip(),
+                port=int(app_config.get("mqtt_port", 1883)),
+                client_id="outage-tracker",
+                auth=mqtt_auth_config(),
+                keepalive=10,
+            )
+        except Exception as exc:
+            logging.warning("MQTT publish failed: %s", exc)
 
 def auto_discover_api(map_url, zip_code):
     if not map_url: return ""
@@ -325,6 +642,14 @@ def config_page():
             if val.lower() == "clear": return ""
             return val
 
+        def get_encrypted_secret(field_name):
+            val = request.form.get(field_name, "").strip()
+            if not val:
+                return app_config.get(field_name, "")
+            if val.lower() == "clear":
+                return ""
+            return cipher_suite.encrypt(val.encode('utf-8')).decode('utf-8')
+
         new_username = request.form.get("admin_username", "").strip()
         new_password = request.form.get("admin_password", "")
         if new_username: app_config["admin_username"] = new_username
@@ -372,12 +697,19 @@ def config_page():
             "snmp_community": request.form.get("snmp_community", "public").strip(),
             "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "").strip(),
             "snmp_community_2": request.form.get("snmp_community_2", "public").strip(),
+            "mqtt_host": request.form.get("mqtt_host", "").strip(),
+            "mqtt_port": int(request.form.get("mqtt_port", 1883)),
+            "mqtt_username": request.form.get("mqtt_username", "").strip(),
+            "mqtt_password": get_encrypted_secret("mqtt_password"),
+            "mqtt_topic_prefix": request.form.get("mqtt_topic_prefix", "outage_tracker").strip() or "outage_tracker",
+            "mqtt_discovery_prefix": request.form.get("mqtt_discovery_prefix", "homeassistant").strip() or "homeassistant",
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
+        publish_mqtt_status(force_discovery=True)
         
         return redirect(url_for('config_page'))
         
@@ -529,6 +861,8 @@ def poll_snmp():
             else:
                 s_state["online"] = False
                 s_state["uptime_s"] = None
+
+        publish_mqtt_status()
                 
         for _ in range(300):
             if (app_config.get("snmp_ip") != c_ip1 or app_config.get("snmp_ip_2") != c_ip2 or
@@ -592,6 +926,8 @@ def poll_watchdog():
                         if elapsed >= thresh and not wd_state["alert_sent"]:
                             send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
                             wd_state["alert_sent"] = True
+
+        publish_mqtt_status()
 
         for _ in range(60):
             if (app_config.get("watchdog_ip") != c_ip1 or app_config.get("watchdog_ip_2") != c_ip2 or
@@ -664,6 +1000,7 @@ def poll_nut():
 
         state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
         state["nut_error"] = " | ".join(errors) if errors else None
+        publish_mqtt_status()
         
         for _ in range(30):
             if (app_config.get("nut_host") != c_host1 or app_config.get("nut_host_2") != c_host2 or
@@ -779,6 +1116,8 @@ def poll_gp_outages():
             except Exception as e:
                 state["error_msg"] = str(e)
                 logging.error(f"API Error: {e}")
+
+        publish_mqtt_status()
 
         for _ in range(300): 
             if app_config.get("kubra_url") != url or app_config.get("zip_code") != zip_c: break

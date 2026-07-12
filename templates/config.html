@@ -173,6 +173,38 @@
                         </div>
                     </div>
 
+                    <!-- MQTT / Home Assistant -->
+                    <div class="card p-4 h-100">
+                        <h4 class="text-info mb-3">MQTT / Home Assistant (Optional)</h4>
+                        <p class="small text-muted mb-3">Publish the live dashboard status into Home Assistant over your tailnet. When configured, Outage Tracker publishes retained MQTT discovery entities and a summary payload for grid, UPS, watchdog, and SNMP state.</p>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">MQTT Host / IP</label>
+                                <input type="text" name="mqtt_host" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_host }}" placeholder="100.x.x.x or homeassistant.tailnet.ts.net">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Port</label>
+                                <input type="number" name="mqtt_port" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_port }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">MQTT Username</label>
+                                <input type="text" name="mqtt_username" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_username }}" placeholder="Optional">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">MQTT Password</label>
+                                <input type="password" name="mqtt_password" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.mqtt_password %}•••••••• (Saved) - Type 'clear' to remove{% else %}Optional{% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Topic Prefix</label>
+                                <input type="text" name="mqtt_topic_prefix" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_topic_prefix }}" placeholder="outage_tracker">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Discovery Prefix</label>
+                                <input type="text" name="mqtt_discovery_prefix" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_discovery_prefix }}" placeholder="homeassistant">
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- ================= RIGHT COLUMN ================= -->
