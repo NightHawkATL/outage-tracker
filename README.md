@@ -26,6 +26,7 @@ If you already have a UPS, why do you need to poll the power company and your in
 * **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
 * **Dual-WAN Watchdog:** Continuously pings up to two IP addresses (like your home Public IP or a Tailscale node) to monitor your home internet connection for downtime, with independent alerting.
 * **SNMP Monitoring:** Poll up to two SNMP devices (like network switches or routers) over your tailnet. You will be alerted when their exact 1.3.6.1.2.1.1.3.0 (sysUpTime) decreases, mathematically proving a reboot or loss of power occurred without needing to open external ports.
+* **MQTT / Home Assistant Export:** Publish the exact live status from the main dashboard into Home Assistant over MQTT, including grid outage state, UPS runtime, watchdog health, and SNMP device status with automatic Home Assistant discovery.
 * **Dynamic Full-Width Layout:** All pages dynamically stretch up to 1500px to offer widescreen views based on your preference. Supports both 1x4 Ultra-Wide rows or compact 2x2 NVR-style grids that automatically adjust depending on which modules you use.
 * **Smart UI Refresh:** To save network bandwidth, the dashboard quietly refreshes every 5 minutes when everything is normal. The exact second a grid outage or UPS event is detected, it shifts into high gear and refreshes every 30 seconds for real-time monitoring.
 * **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network.
@@ -38,34 +39,22 @@ If you already have a UPS, why do you need to poll the power company and your in
 
 ## 📂 Folder Structure
 
-Before building the container, ensure your project directory looks like this:
+You only need the `compose.yaml` file to deploy the published image. Ensure your deployment directory looks like this:
 
 ```text
 outage-tracker/
-├── Dockerfile
 ├── compose.yaml
-├── requirements.txt
-├── app.py
-├── entrypoint.sh      
-├── reset_auth.py      <-- Password reset tool
 ├── auth_key/          <-- Auto-generated folder containing your secret decryption key
-├── static/
-│   ├── favicon.ico    <-- Your browser tab icon
-│   └── logo.svg       <-- Your custom header logo
-└── templates/
-    ├── config.html
-    ├── history.html
-    ├── index.html
-    └── login.html     <-- Secure login screen
+└── data/              <-- Auto-generated folder containing configuration and history
 ```
 
 ---
 
 ## 🚀 Installation
 
-First, clone this repository to your Docker host and navigate into the folder:
+Create a new directory on your Docker host and navigate into it:
 ```bash
-git clone https://github.com/NightHawkATL/outage-tracker.git
+mkdir outage-tracker
 cd outage-tracker
 ```
 
@@ -76,7 +65,7 @@ Deploy via Docker Compose. The application uses persistent volumes to save your 
 ```yaml
 services:
   outage-tracker:
-    build: .
+    image: nighthawkatl/outage-tracker:latest
     container_name: outage-tracker
     restart: unless-stopped
     ports:
@@ -92,7 +81,7 @@ services:
 
 Start the container:
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 Once running, access the dashboard at `http://<YOUR-DOCKER-IP>:8080`.
 
@@ -155,6 +144,15 @@ Create a free account at [Pushover.net](https://pushover.net/) and create an "Ap
 * **API Token:** Found by clicking your specific Application under "Your Applications".
 
 Use the **"Test Pushover Alert"** button on the main dashboard to verify your keys are correct and preview your Mapbox generation!
+
+### 7. MQTT / Home Assistant Integration (Optional)
+If you want the live dashboard state in Home Assistant, install the **Mosquitto broker** addon in Home Assistant, add the built-in **MQTT integration**, and create a dedicated MQTT user account.
+1. In Home Assistant, keep the **Tailscale** addon connected to your tailnet so the broker is reachable over its `100.x.x.x` address or MagicDNS hostname.
+2. In Outage Tracker, open **Settings** and fill in the **MQTT Host / IP**, **Port**, **Username**, and **Password** fields.
+3. Leave the default **Topic Prefix** (`outage_tracker`) and **Discovery Prefix** (`homeassistant`) unless you already use a different namespace.
+4. Save the configuration. Outage Tracker will immediately begin publishing retained MQTT status payloads and Home Assistant discovery entities for the grid, UPS, watchdog, and SNMP panels on the dashboard.
+
+> **Tailscale Note:** You do not need to enable Funnel, Serve, Exit Node, or open public ports just for MQTT if Mosquitto is running on the Home Assistant host itself. Simply keep Home Assistant joined to the same tailnet as Outage Tracker.
 
 <img width="609" height="258" alt="pushover-test" src="https://github.com/user-attachments/assets/6919576a-4215-44c9-a3d8-603968ffcc3e" />
 
