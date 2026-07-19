@@ -1,0 +1,26 @@
+# VCS and CI metadata
+.git/
+.gitea/
+.github/
+
+# Local runtime/state data (mounted at runtime)
+data/
+auth_key/
+
+# Python caches and local envs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local docs and misc
+*.md
+LICENSE
+SECURITY.md
+
+# Screenshots or generated artifacts
+screenshots/
