@@ -324,13 +324,14 @@ def mqtt_auth_config():
 def build_dashboard_snapshot():
     now = datetime.now()
     watchdogs = {}
+    watchdog_initialized = bool(state.get("watchdog_last_check"))
     for w_id in ["1", "2"]:
         wd_state = state["watchdogs"][w_id]
         duration = 0
         if not wd_state.get("online", True) and wd_state.get("down_time"):
             duration = int((now - wd_state["down_time"]).total_seconds() / 60)
         watchdogs[w_id] = {
-            "online": wd_state.get("online", True),
+            "online": wd_state.get("online", True) if watchdog_initialized else None,
             "alert_sent": wd_state.get("alert_sent", False),
             "down_minutes": duration,
             "target": app_config.get("watchdog_ip" if w_id == "1" else "watchdog_ip_2", ""),
@@ -342,7 +343,7 @@ def build_dashboard_snapshot():
         snmp_state = state["snmp"][s_id]
         suffix = "" if s_id == "1" else "_2"
         snmp_devices[s_id] = {
-            "online": snmp_state.get("online", False),
+            "online": snmp_state.get("online", False) if snmp_state.get("last_check") else None,
             "uptime_seconds": snmp_state.get("uptime_s"),
             "uptime_human": format_uptime(snmp_state.get("uptime_s")),
             "last_check": snmp_state.get("last_check"),
@@ -369,8 +370,8 @@ def build_dashboard_snapshot():
         overall_status = "error"
     elif state.get("is_outage") or ups_on_battery > 0:
         overall_status = "alert"
-    elif any(not item["online"] for item in watchdogs.values() if item["target"]) or any(
-        not item["online"] for item in snmp_devices.values() if item["ip"]
+    elif any(item["online"] is False for item in watchdogs.values() if item["target"]) or any(
+        item["online"] is False for item in snmp_devices.values() if item["ip"]
     ):
         overall_status = "warning"
 
