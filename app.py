@@ -800,7 +800,8 @@ def config_page():
         
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
     nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2)
+    mqtt_status = get_mqtt_status(app_config.get("mqtt_host"), app_config.get("mqtt_port", 1883))
+    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -828,6 +829,15 @@ def get_nut_status(host, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(2)
             s.connect((host, port))
+        return "Connected"
+    except Exception: return "Offline / Unreachable"
+
+def get_mqtt_status(host, port):
+    if not host: return "Not Configured"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(3)
+            s.connect((host, int(port)))
         return "Connected"
     except Exception: return "Offline / Unreachable"
 
