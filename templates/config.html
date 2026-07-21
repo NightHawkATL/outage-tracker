@@ -175,7 +175,16 @@
 
                     <!-- MQTT / Home Assistant -->
                     <div class="card p-4 h-100">
-                        <h4 class="text-info mb-3">MQTT / Home Assistant (Optional)</h4>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-info mb-0">MQTT / Home Assistant (Optional)</h4>
+                            {% if mqtt_status == "Connected" %}
+                                <span class="badge bg-success p-2">{{ mqtt_status }}</span>
+                            {% elif mqtt_status == "Not Configured" %}
+                                <span class="badge bg-secondary p-2">{{ mqtt_status }}</span>
+                            {% else %}
+                                <span class="badge bg-danger p-2">{{ mqtt_status }}</span>
+                            {% endif %}
+                        </div>
                         <p class="small text-muted mb-3">Publish the live dashboard status into Home Assistant over your tailnet. When configured, Outage Tracker publishes retained MQTT discovery entities and a summary payload for grid, UPS, watchdog, and SNMP state.</p>
                         <div class="row g-3">
                             <div class="col-md-8">

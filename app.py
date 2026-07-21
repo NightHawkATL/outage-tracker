@@ -31,6 +31,8 @@ KEY_DIR = "/app/auth_key"
 KEY_FILE = os.path.join(KEY_DIR, "secret.key")
 MQTT_PUBLISH_LOCK = threading.Lock()
 MQTT_DISCOVERY_STATE = {"signature": None, "published_at": 0}
+FAST_REFRESH_SECONDS = 30
+IDLE_REFRESH_SECONDS = 300
 
 # --- Docker Hub Update Check (with caching) ---
 _update_cache = {"latest": None, "checked": 0, "error": None}
@@ -66,6 +68,27 @@ def update_available(current_tag, latest_tag):
         return latest_semver > current_semver
 
     return bool(latest_tag) and str(latest_tag).strip() != str(current_tag).strip()
+
+
+def needs_fast_refresh():
+    if state.get("is_outage") and state.get("outage_start_time"):
+        return True
+
+    for watchdog_state in state["watchdogs"].values():
+        if not watchdog_state.get("online", True) and watchdog_state.get("down_time"):
+            return True
+
+    if state.get("nut_enabled"):
+        for ups in state.get("ups_data", {}).values():
+            if "OB" in ups.get("status", ""):
+                return True
+
+    last_check = state.get("last_check") or ""
+    return "Discover" in last_check or "Heal" in last_check
+
+
+def refresh_interval_seconds():
+    return FAST_REFRESH_SECONDS if needs_fast_refresh() else IDLE_REFRESH_SECONDS
 
 def get_latest_dockerhub_tag():
     now = time.time()
@@ -572,6 +595,17 @@ def publish_mqtt_status(force_discovery=False):
         except Exception as exc:
             logging.warning("MQTT publish failed: %s", exc)
 
+
+def mqtt_heartbeat_loop():
+    while True:
+        publish_mqtt_status()
+        interval = refresh_interval_seconds()
+
+        for _ in range(interval):
+            time.sleep(1)
+            if refresh_interval_seconds() != interval:
+                break
+
 def auto_discover_api(map_url, zip_code):
     if not map_url: return ""
     try:
@@ -660,21 +694,15 @@ def api_update():
 @login_required
 def index():
     duration = 0
-    event_active = False
+    event_active = needs_fast_refresh()
     
     if state["is_outage"] and state["outage_start_time"]:
         duration = int((datetime.now() - state["outage_start_time"]).total_seconds() / 60)
-        event_active = True
         
     wd_durations = {"1": 0, "2": 0}
     for w_id in ["1", "2"]:
         if not state["watchdogs"][w_id]["online"] and state["watchdogs"][w_id]["down_time"]:
             wd_durations[w_id] = int((datetime.now() - state["watchdogs"][w_id]["down_time"]).total_seconds() / 60)
-            event_active = True
-            
-    if state["nut_enabled"]:
-        for ups in state["ups_data"].values():
-            if "OB" in ups.get("status", ""): event_active = True
                 
     return render_template("index.html", state=state, config=app_config, duration=duration, wd_durations=wd_durations, ts_status=get_ts_status(), event_active=event_active, format_uptime=format_uptime, app_version=APP_VERSION)
 
@@ -772,7 +800,8 @@ def config_page():
         
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
     nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2)
+    mqtt_status = get_mqtt_status(app_config.get("mqtt_host"), app_config.get("mqtt_port", 1883))
+    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -800,6 +829,15 @@ def get_nut_status(host, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(2)
             s.connect((host, port))
+        return "Connected"
+    except Exception: return "Offline / Unreachable"
+
+def get_mqtt_status(host, port):
+    if not host: return "Not Configured"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(3)
+            s.connect((host, int(port)))
         return "Connected"
     except Exception: return "Offline / Unreachable"
 
@@ -1185,4 +1223,5 @@ if __name__ == "__main__":
     threading.Thread(target=poll_nut, daemon=True).start()
     threading.Thread(target=poll_watchdog, daemon=True).start()
     threading.Thread(target=poll_snmp, daemon=True).start()
+    threading.Thread(target=mqtt_heartbeat_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=8080)
