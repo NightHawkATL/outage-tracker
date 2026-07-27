@@ -1,6 +1,6 @@
 services:
   outage-tracker:
-    build: .
+    image: nighthawkatl/outage-tracker:latest
     container_name: outage-tracker
     ports:
       - "8585:8080"
