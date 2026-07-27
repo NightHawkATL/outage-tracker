@@ -33,6 +33,7 @@ MQTT_PUBLISH_LOCK = threading.Lock()
 MQTT_DISCOVERY_STATE = {"signature": None, "published_at": 0}
 FAST_REFRESH_SECONDS = 30
 IDLE_REFRESH_SECONDS = 300
+MQTT_STARTUP_SUPPRESS_SECONDS = 120
 
 # --- Docker Hub Update Check (with caching) ---
 _update_cache = {"latest": None, "checked": 0, "error": None}
@@ -91,6 +92,32 @@ def refresh_interval_seconds():
     return FAST_REFRESH_SECONDS if needs_fast_refresh() else IDLE_REFRESH_SECONDS
 
 
+def mqtt_startup_suppression_active():
+    started_at = state.get("process_started_at", time.time())
+    return (time.time() - started_at) < MQTT_STARTUP_SUPPRESS_SECONDS
+
+
+def mqtt_connectivity_state_verified():
+    if not mqtt_startup_suppression_active():
+        return True
+
+    for w_id in ["1", "2"]:
+        suffix = "" if w_id == "1" else "_2"
+        if app_config.get(f"watchdog_ip{suffix}"):
+            wd_state = state["watchdogs"][w_id]
+            if wd_state.get("last_check") and wd_state.get("online") is False and not wd_state.get("ever_online"):
+                return False
+
+    for s_id in ["1", "2"]:
+        suffix = "" if s_id == "1" else "_2"
+        if app_config.get(f"snmp_ip{suffix}"):
+            snmp_state = state["snmp"][s_id]
+            if snmp_state.get("last_check") and snmp_state.get("online") is False and not snmp_state.get("ever_online"):
+                return False
+
+    return True
+
+
 def mqtt_initial_state_ready():
     has_grid = bool(app_config.get("zip_code") and (app_config.get("kubra_url") or app_config.get("map_url")))
     if has_grid and not (state.get("last_check") or state.get("error_msg") or state.get("discovery_failed")):
@@ -106,6 +133,9 @@ def mqtt_initial_state_ready():
         suffix = "" if s_id == "1" else "_2"
         if app_config.get(f"snmp_ip{suffix}") and not state["snmp"][s_id].get("last_check"):
             return False
+
+    if not mqtt_connectivity_state_verified():
+        return False
 
     return True
 
@@ -267,19 +297,20 @@ os.environ['TZ'] = app_config.get("timezone", "America/New_York")
 time.tzset()
 
 state = {
+    "process_started_at": time.time(),
     "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
     "discovery_failed": False,
     "nut_enabled": bool(app_config.get("nut_host") or app_config.get("nut_host_2")), 
     "ups_data": {}, "nut_last_check": None, "nut_error": None,
     "watchdogs": {
-        "1": {"online": True, "down_time": None, "alert_sent": False},
-        "2": {"online": True, "down_time": None, "alert_sent": False}
+        "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None},
+        "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None}
     },
     "watchdog_last_check": None,
     "snmp": {
-        "1": {"online": False, "uptime_s": None, "last_check": None},
-        "2": {"online": False, "uptime_s": None, "last_check": None}
+        "1": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False},
+        "2": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False}
     }
 }
 
@@ -1053,6 +1084,7 @@ def poll_snmp():
                             ticks = int(re.search(r'\d+', ticks_str).group())
                             new_uptime_s = ticks / 100.0
                             s_state["online"] = True
+                            s_state["ever_online"] = True
                             
                             if s_state["uptime_s"] is not None:
                                 if new_uptime_s < (s_state["uptime_s"] - 60):
@@ -1105,6 +1137,7 @@ def poll_watchdog():
 
                 state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
                 wd_state = state["watchdogs"][w_id]
+                wd_state["last_check"] = state["watchdog_last_check"]
                 name = "Primary WAN" if w_id == "1" else "Secondary WAN"
 
                 if is_online:
@@ -1123,6 +1156,7 @@ def poll_watchdog():
                             send_pushover("✅ Network Restored", f"{name} connection to {ip}:{port} restored.\nDowntime: {int(elapsed)} mins.", priority=0)
                     
                     wd_state["online"] = True
+                    wd_state["ever_online"] = True
                     wd_state["down_time"] = None
                     wd_state["alert_sent"] = False
                 else:
