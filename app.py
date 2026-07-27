@@ -1040,6 +1040,53 @@ def build_snmpget_command(host, port, oid, version, community, v3_username, v3_a
     cmd.extend(["-O", "tv", "-t", "3", "-r", "1", target_host, target_oid])
     return cmd, None
 
+
+def parse_snmp_uptime_seconds(raw_output):
+    if not raw_output:
+        return None
+
+    text = str(raw_output).strip()
+    if not text:
+        return None
+
+    timeticks_match = re.search(r"Timeticks:\s*\((\d+)\)", text, re.IGNORECASE)
+    if timeticks_match:
+        return int(timeticks_match.group(1)) / 100.0
+
+    hms_match = re.search(r"(?:(\d+)\s+days?,\s*)?(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?", text, re.IGNORECASE)
+    if hms_match:
+        days = int(hms_match.group(1) or 0)
+        hours = int(hms_match.group(2))
+        mins = int(hms_match.group(3))
+        secs = int(hms_match.group(4))
+        fraction = hms_match.group(5) or "0"
+        frac_seconds = float(f"0.{fraction}")
+        return (days * 86400) + (hours * 3600) + (mins * 60) + secs + frac_seconds
+
+    typed_int_match = re.search(r"(?:INTEGER|Gauge32|Counter32|Counter64|Unsigned32):\s*(-?\d+)", text, re.IGNORECASE)
+    if typed_int_match:
+        raw_value = int(typed_int_match.group(1))
+        if raw_value < 0:
+            return None
+        if "timeticks" in text.lower():
+            return raw_value / 100.0
+        return float(raw_value)
+
+    paren_value_match = re.search(r"\((\d+)\)", text)
+    if paren_value_match:
+        return int(paren_value_match.group(1)) / 100.0
+
+    numeric_match = re.search(r"-?\d+", text)
+    if numeric_match:
+        raw_value = int(numeric_match.group(0))
+        if raw_value < 0:
+            return None
+        if "timeticks" in text.lower() or raw_value >= 8640000:
+            return raw_value / 100.0
+        return float(raw_value)
+
+    return None
+
 def poll_snmp():
     while True:
         snmp_snapshot = {
@@ -1094,13 +1141,10 @@ def poll_snmp():
                     res = subprocess.run(cmd, capture_output=True, text=True)
                     
                     if res.returncode == 0:
-                        ticks_str = res.stdout.strip()
-                        try:
-                            ticks = int(re.search(r'\d+', ticks_str).group())
-                            new_uptime_s = ticks / 100.0
-                            s_state["online"] = True
-                            s_state["ever_online"] = True
-                            
+                        s_state["online"] = True
+                        s_state["ever_online"] = True
+                        new_uptime_s = parse_snmp_uptime_seconds(res.stdout)
+                        if new_uptime_s is not None:
                             if s_state["uptime_s"] is not None:
                                 if new_uptime_s < (s_state["uptime_s"] - 60):
                                     send_pushover("🔄 Hardware Reboot", f"{name} ({ip}) has rebooted.\nNew Uptime: {format_uptime(new_uptime_s)}", priority=0)
@@ -1110,9 +1154,10 @@ def poll_snmp():
                                         "old_uptime": format_uptime(s_state["uptime_s"])
                                     })
                                     save_history(hist)
-
                             s_state["uptime_s"] = new_uptime_s
-                        except: s_state["online"] = False
+                        else:
+                            s_state["uptime_s"] = None
+                            logging.warning("SNMP uptime parse failed for %s (%s). Raw output: %s", name, ip, res.stdout.strip())
                     else:
                         s_state["online"] = False
                 except Exception:
