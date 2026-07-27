@@ -797,6 +797,18 @@ def history_page():
 def config_page():
     global app_config
     if request.method == "POST":
+        def get_int(field_name, default_value):
+            raw_val = request.form.get(field_name, "")
+            if raw_val is None:
+                return default_value
+            text = str(raw_val).strip()
+            if text == "":
+                return default_value
+            try:
+                return int(text)
+            except ValueError:
+                return default_value
+
         def get_secure(field_name):
             val = request.form.get(field_name, "").strip()
             if not val: return app_config.get(field_name, "")
@@ -841,22 +853,22 @@ def config_page():
                 logging.warning("❌ Auto-discovery failed.")
 
         app_config.update({
-            "session_timeout": int(request.form.get("session_timeout", 24)), "timezone": new_tz,
+            "session_timeout": get_int("session_timeout", 24), "timezone": new_tz,
             "ui_layout": request.form.get("ui_layout", "2x2"), "ui_text_size": request.form.get("ui_text_size", "15px"),
             "company_name": request.form.get("company_name", "").strip(), "zip_code": zip_c,
-            "threshold_mins": int(request.form.get("threshold_mins", 45)), "kubra_url": api_url,
+            "threshold_mins": get_int("threshold_mins", 45), "kubra_url": api_url,
             "map_url": map_url, "report_url": request.form.get("report_url", "").strip(),
-            "nut_host": request.form.get("nut_host", "").strip(), "nut_port": int(request.form.get("nut_port", 3493)),
-            "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(), "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
-            "nut_host_2": request.form.get("nut_host_2", "").strip(), "nut_port_2": int(request.form.get("nut_port_2", 3493)),
-            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(), "ups_min_runtime_2": int(request.form.get("ups_min_runtime_2", 10)),
-            "watchdog_ip": request.form.get("watchdog_ip", "").strip(), "watchdog_port": int(request.form.get("watchdog_port", 80)),
-            "watchdog_threshold": int(request.form.get("watchdog_threshold", 5)),
-            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
-            "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
+            "nut_host": request.form.get("nut_host", "").strip(), "nut_port": get_int("nut_port", 3493),
+            "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(), "ups_min_runtime": get_int("ups_min_runtime", 10),
+            "nut_host_2": request.form.get("nut_host_2", "").strip(), "nut_port_2": get_int("nut_port_2", 3493),
+            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(), "ups_min_runtime_2": get_int("ups_min_runtime_2", 10),
+            "watchdog_ip": request.form.get("watchdog_ip", "").strip(), "watchdog_port": get_int("watchdog_port", 80),
+            "watchdog_threshold": get_int("watchdog_threshold", 5),
+            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": get_int("watchdog_port_2", 80),
+            "watchdog_threshold_2": get_int("watchdog_threshold_2", 5),
             "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "").strip(),
             "snmp_version": request.form.get("snmp_version", "2c").strip().lower(),
-            "snmp_port": int(request.form.get("snmp_port", 161)),
+            "snmp_port": get_int("snmp_port", 161),
             "snmp_oid": request.form.get("snmp_oid", "1.3.6.1.2.1.1.3.0").strip() or "1.3.6.1.2.1.1.3.0",
             "snmp_community": request.form.get("snmp_community", "public").strip(),
             "snmp_v3_username": request.form.get("snmp_v3_username", "").strip(),
@@ -866,7 +878,7 @@ def config_page():
             "snmp_v3_priv_password": get_encrypted_secret("snmp_v3_priv_password"),
             "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "").strip(),
             "snmp_version_2": request.form.get("snmp_version_2", "2c").strip().lower(),
-            "snmp_port_2": int(request.form.get("snmp_port_2", 161)),
+            "snmp_port_2": get_int("snmp_port_2", 161),
             "snmp_oid_2": request.form.get("snmp_oid_2", "1.3.6.1.2.1.1.3.0").strip() or "1.3.6.1.2.1.1.3.0",
             "snmp_community_2": request.form.get("snmp_community_2", "public").strip(),
             "snmp_v3_username_2": request.form.get("snmp_v3_username_2", "").strip(),
@@ -1003,6 +1015,9 @@ def fetch_nut_data(host, port, names):
 def build_snmpget_command(host, port, oid, version, community, v3_username, v3_auth_protocol, v3_auth_password, v3_priv_protocol, v3_priv_password):
     target_oid = oid or "1.3.6.1.2.1.1.3.0"
     cmd = ["snmpget"]
+    target_host = str(host).strip()
+    if port:
+        target_host = f"{target_host}:{port}"
 
     if version == "3":
         username = (v3_username or "").strip()
@@ -1022,7 +1037,7 @@ def build_snmpget_command(host, port, oid, version, community, v3_username, v3_a
     else:
         cmd.extend(["-v2c", "-c", community or "public"])
 
-    cmd.extend(["-O", "tv", "-t", "3", "-r", "1", "-p", str(port), host, target_oid])
+    cmd.extend(["-O", "tv", "-t", "3", "-r", "1", target_host, target_oid])
     return cmd, None
 
 def poll_snmp():
