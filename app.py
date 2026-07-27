@@ -90,6 +90,25 @@ def needs_fast_refresh():
 def refresh_interval_seconds():
     return FAST_REFRESH_SECONDS if needs_fast_refresh() else IDLE_REFRESH_SECONDS
 
+
+def mqtt_initial_state_ready():
+    has_grid = bool(app_config.get("zip_code") and (app_config.get("kubra_url") or app_config.get("map_url")))
+    if has_grid and not (state.get("last_check") or state.get("error_msg") or state.get("discovery_failed")):
+        return False
+
+    if state.get("nut_enabled") and not state.get("nut_last_check"):
+        return False
+
+    if (app_config.get("watchdog_ip") or app_config.get("watchdog_ip_2")) and not state.get("watchdog_last_check"):
+        return False
+
+    for s_id in ["1", "2"]:
+        suffix = "" if s_id == "1" else "_2"
+        if app_config.get(f"snmp_ip{suffix}") and not state["snmp"][s_id].get("last_check"):
+            return False
+
+    return True
+
 def get_latest_dockerhub_tag():
     now = time.time()
     with _update_cache_lock:
@@ -346,13 +365,14 @@ def mqtt_auth_config():
 def build_dashboard_snapshot():
     now = datetime.now()
     watchdogs = {}
+    watchdog_initialized = bool(state.get("watchdog_last_check"))
     for w_id in ["1", "2"]:
         wd_state = state["watchdogs"][w_id]
         duration = 0
         if not wd_state.get("online", True) and wd_state.get("down_time"):
             duration = int((now - wd_state["down_time"]).total_seconds() / 60)
         watchdogs[w_id] = {
-            "online": wd_state.get("online", True),
+            "online": wd_state.get("online", True) if watchdog_initialized else None,
             "alert_sent": wd_state.get("alert_sent", False),
             "down_minutes": duration,
             "target": app_config.get("watchdog_ip" if w_id == "1" else "watchdog_ip_2", ""),
@@ -364,7 +384,7 @@ def build_dashboard_snapshot():
         snmp_state = state["snmp"][s_id]
         suffix = "" if s_id == "1" else "_2"
         snmp_devices[s_id] = {
-            "online": snmp_state.get("online", False),
+            "online": snmp_state.get("online", False) if snmp_state.get("last_check") else None,
             "uptime_seconds": snmp_state.get("uptime_s"),
             "uptime_human": format_uptime(snmp_state.get("uptime_s")),
             "last_check": snmp_state.get("last_check"),
@@ -391,8 +411,8 @@ def build_dashboard_snapshot():
         overall_status = "error"
     elif state.get("is_outage") or ups_on_battery > 0:
         overall_status = "alert"
-    elif any(not item["online"] for item in watchdogs.values() if item["target"]) or any(
-        not item["online"] for item in snmp_devices.values() if item["ip"]
+    elif any(item["online"] is False for item in watchdogs.values() if item["target"]) or any(
+        item["online"] is False for item in snmp_devices.values() if item["ip"]
     ):
         overall_status = "warning"
 
@@ -600,6 +620,9 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
 
 def publish_mqtt_status(force_discovery=False):
     if not mqtt_enabled():
+        return
+
+    if not mqtt_initial_state_ready():
         return
 
     with MQTT_PUBLISH_LOCK:
