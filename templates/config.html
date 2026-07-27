@@ -14,7 +14,13 @@
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 1300px;">
+    {% if config.ui_layout == '1x4' %}
+        {% set container_width = '1500px' %}
+    {% else %}
+        {% set container_width = '1100px' %}
+    {% endif %}
+
+    <div class="container" style="max-width: {{ container_width }};">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0 d-flex align-items-center">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
@@ -333,21 +339,68 @@
                     <!-- Hardware SNMP Monitoring -->
                     <div class="card p-4 h-100">
                         <h4 class="text-info mb-3">Hardware SNMP Monitoring (Optional)</h4>
-                        <p class="small text-muted mb-3">Ensure your switch or router never reboots unnoticed. Enter the local IP and SNMPv2c Community String of up to two devices to track their Uptime.</p>
+                        <p class="small text-muted mb-3">Track up to two SNMP targets using SNMPv2c or SNMPv3. Supports local IPs, hostnames, and cloud SNMP targets such as Meraki-reachable endpoints.</p>
                         
                         <h6 class="text-muted text-uppercase mb-2">Primary Device</h6>
                         <div class="row g-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label">Display Name</label>
                                 <input type="text" name="snmp_name" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name }}" placeholder="e.g. Core Switch">
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Target IP</label>
-                                <input type="text" name="snmp_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip }}" placeholder="e.g. 10.0.1.2">
+                            <div class="col-md-3">
+                                <label class="form-label">Target Host / IP</label>
+                                <input type="text" name="snmp_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip }}" placeholder="e.g. 10.0.1.2 or snmp.example.com">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2">
+                                <label class="form-label">Version</label>
+                                <select name="snmp_version" id="snmp_version" class="form-select bg-dark text-white border-secondary" onchange="toggleSnmpVersion('')">
+                                    <option value="2c" {% if config.snmp_version != '3' %}selected{% endif %}>v2c</option>
+                                    <option value="3" {% if config.snmp_version == '3' %}selected{% endif %}>v3</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Port</label>
+                                <input type="number" name="snmp_port" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_port }}" placeholder="161">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">OID</label>
+                                <input type="text" name="snmp_oid" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_oid }}" placeholder="1.3.6.1.2.1.1.3.0">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1" id="snmp-v2-fields-primary">
+                            <div class="col-md-6">
                                 <label class="form-label">Community String</label>
                                 <input type="text" name="snmp_community" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community }}" placeholder="public">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1" id="snmp-v3-fields-primary" style="display:none;">
+                            <div class="col-md-3">
+                                <label class="form-label">SNMPv3 Username</label>
+                                <input type="text" name="snmp_v3_username" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_v3_username }}" placeholder="snmp-user">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Auth Protocol</label>
+                                <select name="snmp_v3_auth_protocol" class="form-select bg-dark text-white border-secondary">
+                                    <option value="SHA" {% if config.snmp_v3_auth_protocol != 'MD5' %}selected{% endif %}>SHA</option>
+                                    <option value="MD5" {% if config.snmp_v3_auth_protocol == 'MD5' %}selected{% endif %}>MD5</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Auth Password</label>
+                                <input type="password" name="snmp_v3_auth_password" class="form-control bg-dark text-white border-secondary" value="" placeholder="Leave blank to keep">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Privacy Protocol</label>
+                                <select name="snmp_v3_priv_protocol" class="form-select bg-dark text-white border-secondary">
+                                    <option value="AES" {% if config.snmp_v3_priv_protocol != 'DES' %}selected{% endif %}>AES</option>
+                                    <option value="DES" {% if config.snmp_v3_priv_protocol == 'DES' %}selected{% endif %}>DES</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Privacy Password</label>
+                                <input type="password" name="snmp_v3_priv_password" class="form-control bg-dark text-white border-secondary" value="" placeholder="Optional, blank keeps current">
                             </div>
                         </div>
                         
@@ -355,17 +408,64 @@
                         
                         <h6 class="text-muted text-uppercase mb-2">Secondary Device</h6>
                         <div class="row g-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label text-muted">Display Name</label>
                                 <input type="text" name="snmp_name_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_name_2 }}" placeholder="e.g. Backup Router">
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label text-muted">Target IP</label>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Target Host / IP</label>
                                 <input type="text" name="snmp_ip_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_ip_2 }}" placeholder="Optional">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2">
+                                <label class="form-label text-muted">Version</label>
+                                <select name="snmp_version_2" id="snmp_version_2" class="form-select bg-dark text-white border-secondary" onchange="toggleSnmpVersion('_2')">
+                                    <option value="2c" {% if config.snmp_version_2 != '3' %}selected{% endif %}>v2c</option>
+                                    <option value="3" {% if config.snmp_version_2 == '3' %}selected{% endif %}>v3</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label text-muted">Port</label>
+                                <input type="number" name="snmp_port_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_port_2 }}" placeholder="161">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label text-muted">OID</label>
+                                <input type="text" name="snmp_oid_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_oid_2 }}" placeholder="1.3.6.1.2.1.1.3.0">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1" id="snmp-v2-fields-secondary">
+                            <div class="col-md-6">
                                 <label class="form-label text-muted">Community String</label>
                                 <input type="text" name="snmp_community_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_community_2 }}">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1" id="snmp-v3-fields-secondary" style="display:none;">
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">SNMPv3 Username</label>
+                                <input type="text" name="snmp_v3_username_2" class="form-control bg-dark text-white border-secondary" value="{{ config.snmp_v3_username_2 }}" placeholder="snmp-user">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Auth Protocol</label>
+                                <select name="snmp_v3_auth_protocol_2" class="form-select bg-dark text-white border-secondary">
+                                    <option value="SHA" {% if config.snmp_v3_auth_protocol_2 != 'MD5' %}selected{% endif %}>SHA</option>
+                                    <option value="MD5" {% if config.snmp_v3_auth_protocol_2 == 'MD5' %}selected{% endif %}>MD5</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Auth Password</label>
+                                <input type="password" name="snmp_v3_auth_password_2" class="form-control bg-dark text-white border-secondary" value="" placeholder="Leave blank to keep">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Privacy Protocol</label>
+                                <select name="snmp_v3_priv_protocol_2" class="form-select bg-dark text-white border-secondary">
+                                    <option value="AES" {% if config.snmp_v3_priv_protocol_2 != 'DES' %}selected{% endif %}>AES</option>
+                                    <option value="DES" {% if config.snmp_v3_priv_protocol_2 == 'DES' %}selected{% endif %}>DES</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label text-muted">Privacy Password</label>
+                                <input type="password" name="snmp_v3_priv_password_2" class="form-control bg-dark text-white border-secondary" value="" placeholder="Optional, blank keeps current">
                             </div>
                         </div>
                     </div>
@@ -394,6 +494,16 @@
     </div>
 
     <script>
+        function toggleSnmpVersion(suffix) {
+            const versionEl = document.getElementById(`snmp_version${suffix}`);
+            const primary = suffix === '';
+            const v2Block = document.getElementById(primary ? 'snmp-v2-fields-primary' : 'snmp-v2-fields-secondary');
+            const v3Block = document.getElementById(primary ? 'snmp-v3-fields-primary' : 'snmp-v3-fields-secondary');
+            const isV3 = versionEl && versionEl.value === '3';
+            if (v2Block) v2Block.style.display = isV3 ? 'none' : '';
+            if (v3Block) v3Block.style.display = isV3 ? '' : 'none';
+        }
+
         function checkPwd() {
             const p1 = document.getElementById('pwd1').value;
             const p2 = document.getElementById('pwd2').value;
@@ -417,6 +527,9 @@
             else if (str < 100) { bar.className = 'progress-bar bg-warning'; }
             else { bar.className = 'progress-bar bg-success'; }
         }
+
+        toggleSnmpVersion('');
+        toggleSnmpVersion('_2');
     </script>
 </body>
 </html>
