@@ -164,10 +164,26 @@ def load_config():
             cfg.setdefault("ups_min_runtime_2", 10)
             cfg.setdefault("snmp_ip", "")
             cfg.setdefault("snmp_name", "")
+            cfg.setdefault("snmp_version", "2c")
+            cfg.setdefault("snmp_port", 161)
+            cfg.setdefault("snmp_oid", "1.3.6.1.2.1.1.3.0")
             cfg.setdefault("snmp_community", "public")
+            cfg.setdefault("snmp_v3_username", "")
+            cfg.setdefault("snmp_v3_auth_protocol", "SHA")
+            cfg.setdefault("snmp_v3_auth_password", "")
+            cfg.setdefault("snmp_v3_priv_protocol", "AES")
+            cfg.setdefault("snmp_v3_priv_password", "")
             cfg.setdefault("snmp_ip_2", "")
             cfg.setdefault("snmp_name_2", "")
+            cfg.setdefault("snmp_version_2", "2c")
+            cfg.setdefault("snmp_port_2", 161)
+            cfg.setdefault("snmp_oid_2", "1.3.6.1.2.1.1.3.0")
             cfg.setdefault("snmp_community_2", "public")
+            cfg.setdefault("snmp_v3_username_2", "")
+            cfg.setdefault("snmp_v3_auth_protocol_2", "SHA")
+            cfg.setdefault("snmp_v3_auth_password_2", "")
+            cfg.setdefault("snmp_v3_priv_protocol_2", "AES")
+            cfg.setdefault("snmp_v3_priv_password_2", "")
             cfg.setdefault("mqtt_host", "")
             cfg.setdefault("mqtt_port", 1883)
             cfg.setdefault("mqtt_username", "")
@@ -189,8 +205,14 @@ def load_config():
         "kubra_url": "", "map_url": "", "report_url": "",
         "nut_host": "", "nut_port": 3493, "nut_ups_names": "auto", "ups_min_runtime": 10,
         "nut_host_2": "", "nut_port_2": 3493, "nut_ups_names_2": "auto", "ups_min_runtime_2": 10,
-        "snmp_ip": "", "snmp_name": "", "snmp_community": "public",
-        "snmp_ip_2": "", "snmp_name_2": "", "snmp_community_2": "public",
+        "snmp_ip": "", "snmp_name": "", "snmp_version": "2c", "snmp_port": 161,
+        "snmp_oid": "1.3.6.1.2.1.1.3.0", "snmp_community": "public",
+        "snmp_v3_username": "", "snmp_v3_auth_protocol": "SHA", "snmp_v3_auth_password": "",
+        "snmp_v3_priv_protocol": "AES", "snmp_v3_priv_password": "",
+        "snmp_ip_2": "", "snmp_name_2": "", "snmp_version_2": "2c", "snmp_port_2": 161,
+        "snmp_oid_2": "1.3.6.1.2.1.1.3.0", "snmp_community_2": "public",
+        "snmp_v3_username_2": "", "snmp_v3_auth_protocol_2": "SHA", "snmp_v3_auth_password_2": "",
+        "snmp_v3_priv_protocol_2": "AES", "snmp_v3_priv_password_2": "",
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
@@ -779,9 +801,25 @@ def config_page():
             "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
             "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
             "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "").strip(),
+            "snmp_version": request.form.get("snmp_version", "2c").strip().lower(),
+            "snmp_port": int(request.form.get("snmp_port", 161)),
+            "snmp_oid": request.form.get("snmp_oid", "1.3.6.1.2.1.1.3.0").strip() or "1.3.6.1.2.1.1.3.0",
             "snmp_community": request.form.get("snmp_community", "public").strip(),
+            "snmp_v3_username": request.form.get("snmp_v3_username", "").strip(),
+            "snmp_v3_auth_protocol": request.form.get("snmp_v3_auth_protocol", "SHA").strip().upper() or "SHA",
+            "snmp_v3_auth_password": get_encrypted_secret("snmp_v3_auth_password"),
+            "snmp_v3_priv_protocol": request.form.get("snmp_v3_priv_protocol", "AES").strip().upper() or "AES",
+            "snmp_v3_priv_password": get_encrypted_secret("snmp_v3_priv_password"),
             "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "").strip(),
+            "snmp_version_2": request.form.get("snmp_version_2", "2c").strip().lower(),
+            "snmp_port_2": int(request.form.get("snmp_port_2", 161)),
+            "snmp_oid_2": request.form.get("snmp_oid_2", "1.3.6.1.2.1.1.3.0").strip() or "1.3.6.1.2.1.1.3.0",
             "snmp_community_2": request.form.get("snmp_community_2", "public").strip(),
+            "snmp_v3_username_2": request.form.get("snmp_v3_username_2", "").strip(),
+            "snmp_v3_auth_protocol_2": request.form.get("snmp_v3_auth_protocol_2", "SHA").strip().upper() or "SHA",
+            "snmp_v3_auth_password_2": get_encrypted_secret("snmp_v3_auth_password_2"),
+            "snmp_v3_priv_protocol_2": request.form.get("snmp_v3_priv_protocol_2", "AES").strip().upper() or "AES",
+            "snmp_v3_priv_password_2": get_encrypted_secret("snmp_v3_priv_password_2"),
             "mqtt_host": request.form.get("mqtt_host", "").strip(),
             "mqtt_port": int(request.form.get("mqtt_port", 1883)),
             "mqtt_username": request.form.get("mqtt_username", "").strip(),
@@ -908,27 +946,83 @@ def fetch_nut_data(host, port, names):
         return results
     except: return None
 
+def build_snmpget_command(host, port, oid, version, community, v3_username, v3_auth_protocol, v3_auth_password, v3_priv_protocol, v3_priv_password):
+    target_oid = oid or "1.3.6.1.2.1.1.3.0"
+    cmd = ["snmpget"]
+
+    if version == "3":
+        username = (v3_username or "").strip()
+        auth_password = decrypt_if_possible(v3_auth_password).strip()
+        privacy_password = decrypt_if_possible(v3_priv_password).strip()
+        auth_protocol = (v3_auth_protocol or "SHA").upper()
+        priv_protocol = (v3_priv_protocol or "AES").upper()
+
+        if not username or not auth_password:
+            return None, "SNMPv3 requires username and auth password"
+
+        cmd.extend(["-v3"])
+        if privacy_password:
+            cmd.extend(["-l", "authPriv", "-u", username, "-a", auth_protocol, "-A", auth_password, "-x", priv_protocol, "-X", privacy_password])
+        else:
+            cmd.extend(["-l", "authNoPriv", "-u", username, "-a", auth_protocol, "-A", auth_password])
+    else:
+        cmd.extend(["-v2c", "-c", community or "public"])
+
+    cmd.extend(["-O", "tv", "-t", "3", "-r", "1", "-p", str(port), host, target_oid])
+    return cmd, None
+
 def poll_snmp():
     while True:
-        c_ip1 = app_config.get("snmp_ip")
-        c_ip2 = app_config.get("snmp_ip_2")
-        c_n1 = app_config.get("snmp_name")
-        c_n2 = app_config.get("snmp_name_2")
-        c_c1 = app_config.get("snmp_community")
-        c_c2 = app_config.get("snmp_community_2")
+        snmp_snapshot = {
+            "snmp_ip": app_config.get("snmp_ip"),
+            "snmp_name": app_config.get("snmp_name"),
+            "snmp_version": app_config.get("snmp_version"),
+            "snmp_port": app_config.get("snmp_port"),
+            "snmp_oid": app_config.get("snmp_oid"),
+            "snmp_community": app_config.get("snmp_community"),
+            "snmp_v3_username": app_config.get("snmp_v3_username"),
+            "snmp_v3_auth_protocol": app_config.get("snmp_v3_auth_protocol"),
+            "snmp_v3_auth_password": app_config.get("snmp_v3_auth_password"),
+            "snmp_v3_priv_protocol": app_config.get("snmp_v3_priv_protocol"),
+            "snmp_v3_priv_password": app_config.get("snmp_v3_priv_password"),
+            "snmp_ip_2": app_config.get("snmp_ip_2"),
+            "snmp_name_2": app_config.get("snmp_name_2"),
+            "snmp_version_2": app_config.get("snmp_version_2"),
+            "snmp_port_2": app_config.get("snmp_port_2"),
+            "snmp_oid_2": app_config.get("snmp_oid_2"),
+            "snmp_community_2": app_config.get("snmp_community_2"),
+            "snmp_v3_username_2": app_config.get("snmp_v3_username_2"),
+            "snmp_v3_auth_protocol_2": app_config.get("snmp_v3_auth_protocol_2"),
+            "snmp_v3_auth_password_2": app_config.get("snmp_v3_auth_password_2"),
+            "snmp_v3_priv_protocol_2": app_config.get("snmp_v3_priv_protocol_2"),
+            "snmp_v3_priv_password_2": app_config.get("snmp_v3_priv_password_2"),
+        }
         
         for s_id in ["1", "2"]:
             suffix = "" if s_id == "1" else "_2"
             ip = app_config.get(f"snmp_ip{suffix}")
+            port = int(app_config.get(f"snmp_port{suffix}", 161) or 161)
+            oid = app_config.get(f"snmp_oid{suffix}", "1.3.6.1.2.1.1.3.0")
+            version = str(app_config.get(f"snmp_version{suffix}", "2c") or "2c").strip().lower()
             comm = app_config.get(f"snmp_community{suffix}", "public")
+            v3_username = app_config.get(f"snmp_v3_username{suffix}", "")
+            v3_auth_protocol = app_config.get(f"snmp_v3_auth_protocol{suffix}", "SHA")
+            v3_auth_password = app_config.get(f"snmp_v3_auth_password{suffix}", "")
+            v3_priv_protocol = app_config.get(f"snmp_v3_priv_protocol{suffix}", "AES")
+            v3_priv_password = app_config.get(f"snmp_v3_priv_password{suffix}", "")
             name = app_config.get(f"snmp_name{suffix}") or f"Hardware {s_id}"
 
             s_state = state["snmp"][s_id]
 
             if ip:
                 try:
-                    res = subprocess.run(["snmpget", "-v2c", "-c", comm, "-O", "tv", "-t", "3", "-r", "1", ip, "1.3.6.1.2.1.1.3.0"], capture_output=True, text=True)
+                    cmd, err = build_snmpget_command(ip, port, oid, version, comm, v3_username, v3_auth_protocol, v3_auth_password, v3_priv_protocol, v3_priv_password)
                     s_state["last_check"] = datetime.now().strftime("%I:%M:%S %p")
+                    if err:
+                        s_state["online"] = False
+                        continue
+
+                    res = subprocess.run(cmd, capture_output=True, text=True)
                     
                     if res.returncode == 0:
                         ticks_str = res.stdout.strip()
@@ -951,7 +1045,7 @@ def poll_snmp():
                         except: s_state["online"] = False
                     else:
                         s_state["online"] = False
-                except Exception as e:
+                except Exception:
                     s_state["online"] = False
             else:
                 s_state["online"] = False
@@ -960,9 +1054,7 @@ def poll_snmp():
         publish_mqtt_status()
                 
         for _ in range(300):
-            if (app_config.get("snmp_ip") != c_ip1 or app_config.get("snmp_ip_2") != c_ip2 or
-                app_config.get("snmp_name") != c_n1 or app_config.get("snmp_name_2") != c_n2 or
-                app_config.get("snmp_community") != c_c1 or app_config.get("snmp_community_2") != c_c2):
+            if any(app_config.get(k) != v for k, v in snmp_snapshot.items()):
                 break
             time.sleep(1)
 
