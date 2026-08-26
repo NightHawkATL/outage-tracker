@@ -242,6 +242,23 @@
                                 <input type="text" name="ts_authkey" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ts_authkey %}•••••••• (Saved) - Type 'clear' to disconnect{% else %}tskey-auth-...{% endif %}">
                             </div>
                         </div>
+
+                        <hr class="border-secondary my-3">
+
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="small text-muted">
+                                Tailscale version: <span class="text-white">{{ ts_update.installed or "Unknown" }}</span>
+                                {% if ts_update.update_available %}
+                                    <span class="badge bg-warning text-dark ms-1">Update available: {{ ts_update.available }}</span>
+                                {% endif %}
+                                {% if ts_update.error %}
+                                    <div class="text-danger small mt-1">Update check failed: {{ ts_update.error }}</div>
+                                {% endif %}
+                            </div>
+                            <button type="button" id="tsUpdateBtn" class="btn btn-outline-info btn-sm" onclick="updateTailscale()" {% if not ts_update.update_available %}disabled{% endif %}>
+                                🔄 Update Tailscale
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Local NUT Settings -->
@@ -494,6 +511,30 @@
     </div>
 
     <script>
+        function updateTailscale() {
+            const btn = document.getElementById('tsUpdateBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ Updating...";
+
+            fetch('/tailscale/update', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    if (data.status === 'success') {
+                        window.location.reload();
+                    } else {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                })
+                .catch(() => {
+                    alert("Error communicating with server.");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+        }
+
         function toggleSnmpVersion(suffix) {
             const versionEl = document.getElementById(`snmp_version${suffix}`);
             const primary = suffix === '';
