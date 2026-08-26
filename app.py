@@ -46,6 +46,7 @@ _update_cache_lock = threading.Lock()
 # --- Tailscale Update Check (with caching) ---
 _ts_update_cache = {"installed": None, "available": None, "update_available": False, "checked": 0, "error": None}
 _ts_update_cache_lock = threading.Lock()
+_ts_update_refresh_in_progress = False
 TS_UPDATE_CACHE_TTL = 3600  # seconds (1 hour)
 TAILSCALED_STATE_ARG = "--state=/app/data/tailscaled.state"
 DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
@@ -192,38 +193,58 @@ def get_tailscale_installed_version():
     return None
 
 
-def get_tailscale_update_info(force=False):
-    now = time.time()
+def _refresh_tailscale_update_cache():
+    global _ts_update_refresh_in_progress
+    installed = get_tailscale_installed_version()
+    available = None
+    error = None
+    try:
+        subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=10)
+        res = subprocess.run(["apk", "list", "--upgradable"], capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                if line.startswith("tailscale-"):
+                    match = re.match(r"tailscale-([\d.]+)-r\d+", line)
+                    if match:
+                        available = match.group(1)
+                    break
+        else:
+            error = res.stderr.strip() or "apk list failed"
+    except Exception as exc:
+        error = str(exc)
+
     with _ts_update_cache_lock:
-        if not force and _ts_update_cache["checked"] and now - _ts_update_cache["checked"] < TS_UPDATE_CACHE_TTL:
-            return dict(_ts_update_cache)
-
-        installed = get_tailscale_installed_version()
-        available = None
-        error = None
-        try:
-            subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=30)
-            res = subprocess.run(["apk", "list", "--upgradable"], capture_output=True, text=True, timeout=15)
-            if res.returncode == 0:
-                for line in res.stdout.splitlines():
-                    if line.startswith("tailscale-"):
-                        match = re.match(r"tailscale-([\d.]+)-r\d+", line)
-                        if match:
-                            available = match.group(1)
-                        break
-            else:
-                error = res.stderr.strip() or "apk list failed"
-        except Exception as exc:
-            error = str(exc)
-
         _ts_update_cache.update({
             "installed": installed,
             "available": available,
             "update_available": bool(available) and update_available(installed, available),
-            "checked": now,
+            "checked": time.time(),
             "error": error,
         })
-        return dict(_ts_update_cache)
+        _ts_update_refresh_in_progress = False
+
+
+def get_tailscale_update_info(force=False):
+    global _ts_update_refresh_in_progress
+
+    if force:
+        _refresh_tailscale_update_cache()
+        with _ts_update_cache_lock:
+            return dict(_ts_update_cache)
+
+    now = time.time()
+    with _ts_update_cache_lock:
+        is_stale = not _ts_update_cache["checked"] or (now - _ts_update_cache["checked"] >= TS_UPDATE_CACHE_TTL)
+        should_start_refresh = is_stale and not _ts_update_refresh_in_progress
+        if should_start_refresh:
+            _ts_update_refresh_in_progress = True
+        snapshot = dict(_ts_update_cache)
+
+    # Never block the page render on apk/network calls; refresh in the background instead.
+    if should_start_refresh:
+        threading.Thread(target=_refresh_tailscale_update_cache, daemon=True).start()
+
+    return snapshot
 
 
 def find_tailscaled_pid():
