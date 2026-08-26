@@ -37,6 +37,7 @@ MQTT_PUBLISH_LOCK = threading.Lock()
 MQTT_DISCOVERY_STATE = {"signature": None, "published_at": 0}
 FAST_REFRESH_SECONDS = 30
 IDLE_REFRESH_SECONDS = 300
+MQTT_STARTUP_SUPPRESS_SECONDS = 120
 
 # --- Docker Hub Update Check (with caching) ---
 _update_cache = {"latest": None, "checked": 0, "error": None}
@@ -101,6 +102,32 @@ def refresh_interval_seconds():
     return FAST_REFRESH_SECONDS if needs_fast_refresh() else IDLE_REFRESH_SECONDS
 
 
+def mqtt_startup_suppression_active():
+    started_at = state.get("process_started_at", time.time())
+    return (time.time() - started_at) < MQTT_STARTUP_SUPPRESS_SECONDS
+
+
+def mqtt_connectivity_state_verified():
+    if not mqtt_startup_suppression_active():
+        return True
+
+    for w_id in ["1", "2"]:
+        suffix = "" if w_id == "1" else "_2"
+        if app_config.get(f"watchdog_ip{suffix}"):
+            wd_state = state["watchdogs"][w_id]
+            if wd_state.get("last_check") and wd_state.get("online") is False and not wd_state.get("ever_online"):
+                return False
+
+    for s_id in ["1", "2"]:
+        suffix = "" if s_id == "1" else "_2"
+        if app_config.get(f"snmp_ip{suffix}"):
+            snmp_state = state["snmp"][s_id]
+            if snmp_state.get("last_check") and snmp_state.get("online") is False and not snmp_state.get("ever_online"):
+                return False
+
+    return True
+
+
 def mqtt_initial_state_ready():
     has_grid = bool(app_config.get("zip_code") and (app_config.get("kubra_url") or app_config.get("map_url")))
     if has_grid and not (state.get("last_check") or state.get("error_msg") or state.get("discovery_failed")):
@@ -116,6 +143,9 @@ def mqtt_initial_state_ready():
         suffix = "" if s_id == "1" else "_2"
         if app_config.get(f"snmp_ip{suffix}") and not state["snmp"][s_id].get("last_check"):
             return False
+
+    if not mqtt_connectivity_state_verified():
+        return False
 
     return True
 
@@ -382,19 +412,20 @@ os.environ['TZ'] = app_config.get("timezone", "America/New_York")
 time.tzset()
 
 state = {
+    "process_started_at": time.time(),
     "is_outage": False, "customers_affected": 0, "outage_start_time": None, "outage_max_affected": 0,
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
     "discovery_failed": False,
     "nut_enabled": bool(app_config.get("nut_host") or app_config.get("nut_host_2")), 
     "ups_data": {}, "nut_last_check": None, "nut_error": None,
     "watchdogs": {
-        "1": {"online": True, "down_time": None, "alert_sent": False},
-        "2": {"online": True, "down_time": None, "alert_sent": False}
+        "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None},
+        "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None}
     },
     "watchdog_last_check": None,
     "snmp": {
-        "1": {"online": False, "uptime_s": None, "last_check": None},
-        "2": {"online": False, "uptime_s": None, "last_check": None}
+        "1": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False},
+        "2": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False}
     }
 }
 
@@ -923,6 +954,18 @@ def undo_history_clear_route():
 def config_page():
     global app_config
     if request.method == "POST":
+        def get_int(field_name, default_value):
+            raw_val = request.form.get(field_name, "")
+            if raw_val is None:
+                return default_value
+            text = str(raw_val).strip()
+            if text == "":
+                return default_value
+            try:
+                return int(text)
+            except ValueError:
+                return default_value
+
         def get_secure(field_name):
             val = request.form.get(field_name, "").strip()
             if not val: return app_config.get(field_name, "")
@@ -967,22 +1010,22 @@ def config_page():
                 logging.warning("❌ Auto-discovery failed.")
 
         app_config.update({
-            "session_timeout": int(request.form.get("session_timeout", 24)), "timezone": new_tz,
+            "session_timeout": get_int("session_timeout", 24), "timezone": new_tz,
             "ui_layout": request.form.get("ui_layout", "2x2"), "ui_text_size": request.form.get("ui_text_size", "15px"),
             "company_name": request.form.get("company_name", "").strip(), "zip_code": zip_c,
-            "threshold_mins": int(request.form.get("threshold_mins", 45)), "kubra_url": api_url,
+            "threshold_mins": get_int("threshold_mins", 45), "kubra_url": api_url,
             "map_url": map_url, "report_url": request.form.get("report_url", "").strip(),
-            "nut_host": request.form.get("nut_host", "").strip(), "nut_port": int(request.form.get("nut_port", 3493)),
-            "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(), "ups_min_runtime": int(request.form.get("ups_min_runtime", 10)),
-            "nut_host_2": request.form.get("nut_host_2", "").strip(), "nut_port_2": int(request.form.get("nut_port_2", 3493)),
-            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(), "ups_min_runtime_2": int(request.form.get("ups_min_runtime_2", 10)),
-            "watchdog_ip": request.form.get("watchdog_ip", "").strip(), "watchdog_port": int(request.form.get("watchdog_port", 80)),
-            "watchdog_threshold": int(request.form.get("watchdog_threshold", 5)),
-            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": int(request.form.get("watchdog_port_2", 80)),
-            "watchdog_threshold_2": int(request.form.get("watchdog_threshold_2", 5)),
+            "nut_host": request.form.get("nut_host", "").strip(), "nut_port": get_int("nut_port", 3493),
+            "nut_ups_names": request.form.get("nut_ups_names", "auto").strip(), "ups_min_runtime": get_int("ups_min_runtime", 10),
+            "nut_host_2": request.form.get("nut_host_2", "").strip(), "nut_port_2": get_int("nut_port_2", 3493),
+            "nut_ups_names_2": request.form.get("nut_ups_names_2", "auto").strip(), "ups_min_runtime_2": get_int("ups_min_runtime_2", 10),
+            "watchdog_ip": request.form.get("watchdog_ip", "").strip(), "watchdog_port": get_int("watchdog_port", 80),
+            "watchdog_threshold": get_int("watchdog_threshold", 5),
+            "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": get_int("watchdog_port_2", 80),
+            "watchdog_threshold_2": get_int("watchdog_threshold_2", 5),
             "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "").strip(),
             "snmp_version": request.form.get("snmp_version", "2c").strip().lower(),
-            "snmp_port": int(request.form.get("snmp_port", 161)),
+            "snmp_port": get_int("snmp_port", 161),
             "snmp_oid": request.form.get("snmp_oid", "1.3.6.1.2.1.1.3.0").strip() or "1.3.6.1.2.1.1.3.0",
             "snmp_community": request.form.get("snmp_community", "public").strip(),
             "snmp_v3_username": request.form.get("snmp_v3_username", "").strip(),
@@ -992,7 +1035,7 @@ def config_page():
             "snmp_v3_priv_password": get_encrypted_secret("snmp_v3_priv_password"),
             "snmp_ip_2": request.form.get("snmp_ip_2", "").strip(), "snmp_name_2": request.form.get("snmp_name_2", "").strip(),
             "snmp_version_2": request.form.get("snmp_version_2", "2c").strip().lower(),
-            "snmp_port_2": int(request.form.get("snmp_port_2", 161)),
+            "snmp_port_2": get_int("snmp_port_2", 161),
             "snmp_oid_2": request.form.get("snmp_oid_2", "1.3.6.1.2.1.1.3.0").strip() or "1.3.6.1.2.1.1.3.0",
             "snmp_community_2": request.form.get("snmp_community_2", "public").strip(),
             "snmp_v3_username_2": request.form.get("snmp_v3_username_2", "").strip(),
@@ -1152,6 +1195,9 @@ def fetch_nut_data(host, port, names):
 def build_snmpget_command(host, port, oid, version, community, v3_username, v3_auth_protocol, v3_auth_password, v3_priv_protocol, v3_priv_password):
     target_oid = oid or "1.3.6.1.2.1.1.3.0"
     cmd = ["snmpget"]
+    target_host = str(host).strip()
+    if port:
+        target_host = f"{target_host}:{port}"
 
     if version == "3":
         username = (v3_username or "").strip()
@@ -1171,8 +1217,55 @@ def build_snmpget_command(host, port, oid, version, community, v3_username, v3_a
     else:
         cmd.extend(["-v2c", "-c", community or "public"])
 
-    cmd.extend(["-O", "tv", "-t", "3", "-r", "1", "-p", str(port), host, target_oid])
+    cmd.extend(["-O", "tv", "-t", "3", "-r", "1", target_host, target_oid])
     return cmd, None
+
+
+def parse_snmp_uptime_seconds(raw_output):
+    if not raw_output:
+        return None
+
+    text = str(raw_output).strip()
+    if not text:
+        return None
+
+    timeticks_match = re.search(r"Timeticks:\s*\((\d+)\)", text, re.IGNORECASE)
+    if timeticks_match:
+        return int(timeticks_match.group(1)) / 100.0
+
+    hms_match = re.search(r"(?:(\d+)\s+days?,\s*)?(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?", text, re.IGNORECASE)
+    if hms_match:
+        days = int(hms_match.group(1) or 0)
+        hours = int(hms_match.group(2))
+        mins = int(hms_match.group(3))
+        secs = int(hms_match.group(4))
+        fraction = hms_match.group(5) or "0"
+        frac_seconds = float(f"0.{fraction}")
+        return (days * 86400) + (hours * 3600) + (mins * 60) + secs + frac_seconds
+
+    typed_int_match = re.search(r"(?:INTEGER|Gauge32|Counter32|Counter64|Unsigned32):\s*(-?\d+)", text, re.IGNORECASE)
+    if typed_int_match:
+        raw_value = int(typed_int_match.group(1))
+        if raw_value < 0:
+            return None
+        if "timeticks" in text.lower():
+            return raw_value / 100.0
+        return float(raw_value)
+
+    paren_value_match = re.search(r"\((\d+)\)", text)
+    if paren_value_match:
+        return int(paren_value_match.group(1)) / 100.0
+
+    numeric_match = re.search(r"-?\d+", text)
+    if numeric_match:
+        raw_value = int(numeric_match.group(0))
+        if raw_value < 0:
+            return None
+        if "timeticks" in text.lower() or raw_value >= 8640000:
+            return raw_value / 100.0
+        return float(raw_value)
+
+    return None
 
 def poll_snmp():
     while True:
@@ -1228,12 +1321,10 @@ def poll_snmp():
                     res = subprocess.run(cmd, capture_output=True, text=True)
                     
                     if res.returncode == 0:
-                        ticks_str = res.stdout.strip()
-                        try:
-                            ticks = int(re.search(r'\d+', ticks_str).group())
-                            new_uptime_s = ticks / 100.0
-                            s_state["online"] = True
-                            
+                        s_state["online"] = True
+                        s_state["ever_online"] = True
+                        new_uptime_s = parse_snmp_uptime_seconds(res.stdout)
+                        if new_uptime_s is not None:
                             if s_state["uptime_s"] is not None:
                                 if new_uptime_s < (s_state["uptime_s"] - 60):
                                     send_pushover("🔄 Hardware Reboot", f"{name} ({ip}) has rebooted.\nNew Uptime: {format_uptime(new_uptime_s)}", priority=0)
@@ -1243,9 +1334,10 @@ def poll_snmp():
                                         "old_uptime": format_uptime(s_state["uptime_s"])
                                     })
                                     save_history(hist)
-
                             s_state["uptime_s"] = new_uptime_s
-                        except: s_state["online"] = False
+                        else:
+                            s_state["uptime_s"] = None
+                            logging.warning("SNMP uptime parse failed for %s (%s). Raw output: %s", name, ip, res.stdout.strip())
                     else:
                         s_state["online"] = False
                 except Exception:
@@ -1285,6 +1377,7 @@ def poll_watchdog():
 
                 state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
                 wd_state = state["watchdogs"][w_id]
+                wd_state["last_check"] = state["watchdog_last_check"]
                 name = "Primary WAN" if w_id == "1" else "Secondary WAN"
 
                 if is_online:
@@ -1303,6 +1396,7 @@ def poll_watchdog():
                             send_pushover("✅ Network Restored", f"{name} connection to {ip}:{port} restored.\nDowntime: {int(elapsed)} mins.", priority=0)
                     
                     wd_state["online"] = True
+                    wd_state["ever_online"] = True
                     wd_state["down_time"] = None
                     wd_state["alert_sent"] = False
                 else:
