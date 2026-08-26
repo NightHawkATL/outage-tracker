@@ -1,6 +1,8 @@
 import os
 import time
 import socket
+import signal
+import shutil
 import threading
 import requests
 import logging
@@ -27,6 +29,8 @@ log.setLevel(logging.ERROR)
 
 CONFIG_FILE = "data/config.json"
 HISTORY_FILE = "data/history.json"
+HISTORY_BACKUP_FILE = "data/history_backup.json"
+HISTORY_DATE_FIELDS = {"grid": "start", "ups": "start", "watchdog": "start", "snmp": "time"}
 KEY_DIR = "/app/auth_key"
 KEY_FILE = os.path.join(KEY_DIR, "secret.key")
 MQTT_PUBLISH_LOCK = threading.Lock()
@@ -38,6 +42,12 @@ MQTT_STARTUP_SUPPRESS_SECONDS = 120
 # --- Docker Hub Update Check (with caching) ---
 _update_cache = {"latest": None, "checked": 0, "error": None}
 _update_cache_lock = threading.Lock()
+
+# --- Tailscale Update Check (with caching) ---
+_ts_update_cache = {"installed": None, "available": None, "update_available": False, "checked": 0, "error": None}
+_ts_update_cache_lock = threading.Lock()
+TS_UPDATE_CACHE_TTL = 3600  # seconds (1 hour)
+TAILSCALED_STATE_ARG = "--state=/app/data/tailscaled.state"
 DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
 DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=50&page=1&ordering=last_updated"
 _CACHE_TTL = 3600  # seconds (1 hour)
@@ -170,6 +180,83 @@ def get_latest_dockerhub_tag():
         _update_cache["checked"] = now
         return _update_cache["latest"], _update_cache["error"]
 
+
+def get_tailscale_installed_version():
+    try:
+        res = subprocess.run(["tailscale", "version"], capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            first_line = res.stdout.strip().splitlines()[0].strip() if res.stdout.strip() else ""
+            return first_line.split()[0] if first_line else None
+    except Exception:
+        pass
+    return None
+
+
+def get_tailscale_update_info(force=False):
+    now = time.time()
+    with _ts_update_cache_lock:
+        if not force and _ts_update_cache["checked"] and now - _ts_update_cache["checked"] < TS_UPDATE_CACHE_TTL:
+            return dict(_ts_update_cache)
+
+        installed = get_tailscale_installed_version()
+        available = None
+        error = None
+        try:
+            subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=30)
+            res = subprocess.run(["apk", "list", "--upgradable"], capture_output=True, text=True, timeout=15)
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    if line.startswith("tailscale-"):
+                        match = re.match(r"tailscale-([\d.]+)-r\d+", line)
+                        if match:
+                            available = match.group(1)
+                        break
+            else:
+                error = res.stderr.strip() or "apk list failed"
+        except Exception as exc:
+            error = str(exc)
+
+        _ts_update_cache.update({
+            "installed": installed,
+            "available": available,
+            "update_available": bool(available) and update_available(installed, available),
+            "checked": now,
+            "error": error,
+        })
+        return dict(_ts_update_cache)
+
+
+def find_tailscaled_pid():
+    try:
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f"/proc/{entry}/comm", "r") as f:
+                    if f.read().strip() == "tailscaled":
+                        return int(entry)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def restart_tailscaled():
+    pid = find_tailscaled_pid()
+    if pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
+        for _ in range(20):
+            if find_tailscaled_pid() is None:
+                break
+            time.sleep(0.5)
+
+    subprocess.Popen(["tailscaled", TAILSCALED_STATE_ARG], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(3)
+
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
@@ -290,6 +377,34 @@ def save_history(history):
     history["watchdog"] = history.get("watchdog", [])[-50:]
     history["snmp"] = history.get("snmp", [])[-50:]
     with open(HISTORY_FILE, 'w') as f: json.dump(history, f, indent=4)
+
+def backup_history():
+    if os.path.exists(HISTORY_FILE):
+        shutil.copyfile(HISTORY_FILE, HISTORY_BACKUP_FILE)
+
+def parse_history_timestamp(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %I:%M %p")
+    except Exception:
+        return None
+
+def filter_history_entries(entries, mode, cutoff_date, keep_count, date_field):
+    if mode == "all":
+        return []
+    if mode == "count":
+        if not keep_count or keep_count <= 0:
+            return []
+        return entries[-keep_count:]
+    if mode == "date":
+        if not cutoff_date:
+            return entries
+        kept = []
+        for entry in entries:
+            ts = parse_history_timestamp(entry.get(date_field, ""))
+            if ts is None or ts >= cutoff_date:
+                kept.append(entry)
+        return kept
+    return entries
 
 app_config = load_config()
 
@@ -790,7 +905,49 @@ def history_page():
     history_data["ups"] = history_data["ups"][::-1]
     history_data["watchdog"] = history_data.get("watchdog", [])[::-1]
     history_data["snmp"] = history_data.get("snmp", [])[::-1]
-    return render_template("history.html", state=state, config=app_config, history=history_data)
+    backup_available = os.path.exists(HISTORY_BACKUP_FILE)
+    return render_template("history.html", state=state, config=app_config, history=history_data, backup_available=backup_available)
+
+@app.route("/history/clear", methods=["POST"])
+@login_required
+def clear_history_route():
+    category = request.form.get("category", "all")
+    mode = request.form.get("mode", "all")
+
+    cutoff_date = None
+    if mode == "date":
+        try:
+            cutoff_date = datetime.strptime(request.form.get("clear_date", "").strip(), "%Y-%m-%d")
+        except ValueError:
+            cutoff_date = None
+
+    keep_count = None
+    if mode == "count":
+        try:
+            keep_count = int(request.form.get("clear_count", "").strip())
+        except ValueError:
+            keep_count = None
+
+    history_data = load_history()
+    backup_history()
+
+    categories = ["grid", "ups", "watchdog", "snmp"] if category == "all" else [category]
+    for cat in categories:
+        if cat not in history_data:
+            continue
+        history_data[cat] = filter_history_entries(
+            history_data[cat], mode, cutoff_date, keep_count, HISTORY_DATE_FIELDS.get(cat, "start")
+        )
+
+    save_history(history_data)
+    return redirect(url_for('history_page'))
+
+@app.route("/history/undo", methods=["POST"])
+@login_required
+def undo_history_clear_route():
+    if os.path.exists(HISTORY_BACKUP_FILE):
+        shutil.move(HISTORY_BACKUP_FILE, HISTORY_FILE)
+    return redirect(url_for('history_page'))
 
 @app.route("/config", methods=["GET", "POST"])
 @login_required
@@ -905,7 +1062,7 @@ def config_page():
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
     nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
     mqtt_status = get_mqtt_status(app_config.get("mqtt_host"), app_config.get("mqtt_port", 1883))
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
+    return render_template("config.html", config=app_config, ts_status=get_ts_status(), ts_update=get_tailscale_update_info(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -913,6 +1070,29 @@ def test_pushover():
     if send_pushover("🔔 Pushover Test", "Configuration working perfectly.", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
+
+@app.route("/tailscale/update", methods=["POST"])
+@login_required
+def tailscale_update_route():
+    try:
+        update_step = subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=30)
+        if update_step.returncode != 0:
+            raise RuntimeError(update_step.stderr.strip() or "apk update failed")
+
+        upgrade_step = subprocess.run(["apk", "add", "--upgrade", "tailscale"], capture_output=True, text=True, timeout=120)
+        if upgrade_step.returncode != 0:
+            raise RuntimeError(upgrade_step.stderr.strip() or "apk upgrade failed")
+
+        restart_tailscaled()
+        info = get_tailscale_update_info(force=True)
+        return jsonify({
+            "status": "success",
+            "message": f"Tailscale updated to {info.get('installed') or 'latest'}.",
+            "installed": info.get("installed"),
+        })
+    except Exception as exc:
+        logging.error(f"Tailscale update failed: {exc}")
+        return jsonify({"status": "error", "message": "Tailscale update failed. Check server logs."}), 500
 
 def get_ts_status():
     ts_status = "Offline"
