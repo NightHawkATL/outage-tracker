@@ -2,6 +2,7 @@ import os
 import time
 import socket
 import signal
+import shutil
 import threading
 import requests
 import logging
@@ -28,6 +29,8 @@ log.setLevel(logging.ERROR)
 
 CONFIG_FILE = "data/config.json"
 HISTORY_FILE = "data/history.json"
+HISTORY_BACKUP_FILE = "data/history_backup.json"
+HISTORY_DATE_FIELDS = {"grid": "start", "ups": "start", "watchdog": "start", "snmp": "time"}
 KEY_DIR = "/app/auth_key"
 KEY_FILE = os.path.join(KEY_DIR, "secret.key")
 MQTT_PUBLISH_LOCK = threading.Lock()
@@ -344,6 +347,34 @@ def save_history(history):
     history["watchdog"] = history.get("watchdog", [])[-50:]
     history["snmp"] = history.get("snmp", [])[-50:]
     with open(HISTORY_FILE, 'w') as f: json.dump(history, f, indent=4)
+
+def backup_history():
+    if os.path.exists(HISTORY_FILE):
+        shutil.copyfile(HISTORY_FILE, HISTORY_BACKUP_FILE)
+
+def parse_history_timestamp(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %I:%M %p")
+    except Exception:
+        return None
+
+def filter_history_entries(entries, mode, cutoff_date, keep_count, date_field):
+    if mode == "all":
+        return []
+    if mode == "count":
+        if not keep_count or keep_count <= 0:
+            return []
+        return entries[-keep_count:]
+    if mode == "date":
+        if not cutoff_date:
+            return entries
+        kept = []
+        for entry in entries:
+            ts = parse_history_timestamp(entry.get(date_field, ""))
+            if ts is None or ts >= cutoff_date:
+                kept.append(entry)
+        return kept
+    return entries
 
 app_config = load_config()
 
@@ -843,7 +874,49 @@ def history_page():
     history_data["ups"] = history_data["ups"][::-1]
     history_data["watchdog"] = history_data.get("watchdog", [])[::-1]
     history_data["snmp"] = history_data.get("snmp", [])[::-1]
-    return render_template("history.html", state=state, config=app_config, history=history_data)
+    backup_available = os.path.exists(HISTORY_BACKUP_FILE)
+    return render_template("history.html", state=state, config=app_config, history=history_data, backup_available=backup_available)
+
+@app.route("/history/clear", methods=["POST"])
+@login_required
+def clear_history_route():
+    category = request.form.get("category", "all")
+    mode = request.form.get("mode", "all")
+
+    cutoff_date = None
+    if mode == "date":
+        try:
+            cutoff_date = datetime.strptime(request.form.get("clear_date", "").strip(), "%Y-%m-%d")
+        except ValueError:
+            cutoff_date = None
+
+    keep_count = None
+    if mode == "count":
+        try:
+            keep_count = int(request.form.get("clear_count", "").strip())
+        except ValueError:
+            keep_count = None
+
+    history_data = load_history()
+    backup_history()
+
+    categories = ["grid", "ups", "watchdog", "snmp"] if category == "all" else [category]
+    for cat in categories:
+        if cat not in history_data:
+            continue
+        history_data[cat] = filter_history_entries(
+            history_data[cat], mode, cutoff_date, keep_count, HISTORY_DATE_FIELDS.get(cat, "start")
+        )
+
+    save_history(history_data)
+    return redirect(url_for('history_page'))
+
+@app.route("/history/undo", methods=["POST"])
+@login_required
+def undo_history_clear_route():
+    if os.path.exists(HISTORY_BACKUP_FILE):
+        shutil.move(HISTORY_BACKUP_FILE, HISTORY_FILE)
+    return redirect(url_for('history_page'))
 
 @app.route("/config", methods=["GET", "POST"])
 @login_required
