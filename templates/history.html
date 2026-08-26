@@ -15,7 +15,7 @@
         .border-ups { border-color: #f44336 !important; }
         .border-wd { border-color: #0dcaf0 !important; }
         .border-snmp { border-color: #9c27b0 !important; }
-        .history-scroll { max-height: 320px; overflow-y: auto; }
+        .history-scroll { max-height: 540px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -99,7 +99,7 @@
                             {% if history.grid|length > 2 %}
                             <div class="collapse history-collapse-group history-scroll" id="collapseGrid">
                                 <div class="d-flex flex-column gap-3">
-                                {% for event in history.grid[2:7] %}
+                                {% for event in history.grid[2:] %}
                                     <div class="p-3 history-item border-grid rounded">
                                         <div class="d-flex justify-content-between">
                                             <h6 class="mb-1 text-white">{{ event.company }} (Zip: {{ event.zip }})</h6>
@@ -141,7 +141,7 @@
                             {% if history.ups|length > 2 %}
                             <div class="collapse history-collapse-group history-scroll" id="collapseUps">
                                 <div class="d-flex flex-column gap-3">
-                                {% for event in history.ups[2:7] %}
+                                {% for event in history.ups[2:] %}
                                     <div class="p-3 history-item border-ups rounded">
                                         <div class="d-flex justify-content-between">
                                             <h6 class="mb-1 text-white">{{ event.ups_name }}</h6>
@@ -183,7 +183,7 @@
                             {% if history.watchdog|length > 2 %}
                             <div class="collapse history-collapse-group history-scroll" id="collapseWd">
                                 <div class="d-flex flex-column gap-3">
-                                {% for event in history.watchdog[2:7] %}
+                                {% for event in history.watchdog[2:] %}
                                     <div class="p-3 history-item border-wd rounded">
                                         <div class="d-flex justify-content-between">
                                             <h6 class="mb-1 text-white text-break">Target: {{ event.target }}</h6>
@@ -224,7 +224,7 @@
                             {% if history.snmp|length > 2 %}
                             <div class="collapse history-collapse-group history-scroll" id="collapseSnmp">
                                 <div class="d-flex flex-column gap-3">
-                                {% for event in history.snmp[2:7] %}
+                                {% for event in history.snmp[2:] %}
                                     <div class="p-3 history-item border-snmp rounded">
                                         <div class="d-flex justify-content-between">
                                             <h6 class="mb-1 text-white text-break">{{ event.name }}</h6>
