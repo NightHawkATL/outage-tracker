@@ -1,6 +1,7 @@
 import os
 import time
 import socket
+import signal
 import threading
 import requests
 import logging
@@ -37,6 +38,12 @@ IDLE_REFRESH_SECONDS = 300
 # --- Docker Hub Update Check (with caching) ---
 _update_cache = {"latest": None, "checked": 0, "error": None}
 _update_cache_lock = threading.Lock()
+
+# --- Tailscale Update Check (with caching) ---
+_ts_update_cache = {"installed": None, "available": None, "update_available": False, "checked": 0, "error": None}
+_ts_update_cache_lock = threading.Lock()
+TS_UPDATE_CACHE_TTL = 3600  # seconds (1 hour)
+TAILSCALED_STATE_ARG = "--state=/app/data/tailscaled.state"
 DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
 DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=50&page=1&ordering=last_updated"
 _CACHE_TTL = 3600  # seconds (1 hour)
@@ -139,6 +146,83 @@ def get_latest_dockerhub_tag():
             _update_cache["error"] = str(e)
         _update_cache["checked"] = now
         return _update_cache["latest"], _update_cache["error"]
+
+
+def get_tailscale_installed_version():
+    try:
+        res = subprocess.run(["tailscale", "version"], capture_output=True, text=True, timeout=10)
+        if res.returncode == 0:
+            first_line = res.stdout.strip().splitlines()[0].strip() if res.stdout.strip() else ""
+            return first_line.split()[0] if first_line else None
+    except Exception:
+        pass
+    return None
+
+
+def get_tailscale_update_info(force=False):
+    now = time.time()
+    with _ts_update_cache_lock:
+        if not force and _ts_update_cache["checked"] and now - _ts_update_cache["checked"] < TS_UPDATE_CACHE_TTL:
+            return dict(_ts_update_cache)
+
+        installed = get_tailscale_installed_version()
+        available = None
+        error = None
+        try:
+            subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=30)
+            res = subprocess.run(["apk", "list", "--upgradable"], capture_output=True, text=True, timeout=15)
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    if line.startswith("tailscale-"):
+                        match = re.match(r"tailscale-([\d.]+)-r\d+", line)
+                        if match:
+                            available = match.group(1)
+                        break
+            else:
+                error = res.stderr.strip() or "apk list failed"
+        except Exception as exc:
+            error = str(exc)
+
+        _ts_update_cache.update({
+            "installed": installed,
+            "available": available,
+            "update_available": bool(available) and update_available(installed, available),
+            "checked": now,
+            "error": error,
+        })
+        return dict(_ts_update_cache)
+
+
+def find_tailscaled_pid():
+    try:
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f"/proc/{entry}/comm", "r") as f:
+                    if f.read().strip() == "tailscaled":
+                        return int(entry)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def restart_tailscaled():
+    pid = find_tailscaled_pid()
+    if pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
+        for _ in range(20):
+            if find_tailscaled_pid() is None:
+                break
+            time.sleep(0.5)
+
+    subprocess.Popen(["tailscaled", TAILSCALED_STATE_ARG], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(3)
 
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
@@ -862,7 +946,7 @@ def config_page():
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
     nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
     mqtt_status = get_mqtt_status(app_config.get("mqtt_host"), app_config.get("mqtt_port", 1883))
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
+    return render_template("config.html", config=app_config, ts_status=get_ts_status(), ts_update=get_tailscale_update_info(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -870,6 +954,29 @@ def test_pushover():
     if send_pushover("🔔 Pushover Test", "Configuration working perfectly.", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
+
+@app.route("/tailscale/update", methods=["POST"])
+@login_required
+def tailscale_update_route():
+    try:
+        update_step = subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=30)
+        if update_step.returncode != 0:
+            raise RuntimeError(update_step.stderr.strip() or "apk update failed")
+
+        upgrade_step = subprocess.run(["apk", "add", "--upgrade", "tailscale"], capture_output=True, text=True, timeout=120)
+        if upgrade_step.returncode != 0:
+            raise RuntimeError(upgrade_step.stderr.strip() or "apk upgrade failed")
+
+        restart_tailscaled()
+        info = get_tailscale_update_info(force=True)
+        return jsonify({
+            "status": "success",
+            "message": f"Tailscale updated to {info.get('installed') or 'latest'}.",
+            "installed": info.get("installed"),
+        })
+    except Exception as exc:
+        logging.error(f"Tailscale update failed: {exc}")
+        return jsonify({"status": "error", "message": "Tailscale update failed. Check server logs."}), 500
 
 def get_ts_status():
     ts_status = "Offline"

@@ -31,7 +31,7 @@ If you already have a UPS, why do you need to poll the power company and your in
 * **MQTT / Home Assistant Export:** Publish the exact live status from the main dashboard into Home Assistant over MQTT, including grid outage state, UPS runtime, watchdog health, and SNMP device status with automatic Home Assistant discovery. The backend also republishes a retained heartbeat automatically every 5 minutes when idle and every 30 seconds during active events so Home Assistant sensors do not go stale.
 * **Dynamic Full-Width Layout:** All pages dynamically stretch up to 1500px to offer widescreen views based on your preference. Supports both 1x4 Ultra-Wide rows or compact 2x2 NVR-style grids that automatically adjust depending on which modules you use.
 * **Smart UI Refresh:** To save network bandwidth, the dashboard quietly refreshes every 5 minutes when everything is normal. The exact second a grid outage or UPS event is detected, it shifts into high gear and refreshes every 30 seconds for real-time monitoring.
-* **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network.
+* **Built-in Tailscale VPN:** No need to install VPN software on your Docker host. Outage Tracker runs its own internal Tailscale daemon to securely bridge your cloud VPS to your home network. The Settings page shows the installed Tailscale version and lets you apply available updates in-place, without waiting for a new container image.
 * **Zero-Knowledge Security:** Sensitive API tokens, VPN auth keys, and home coordinates are configured as "Write-Only" in the UI. Once saved, they are encrypted and hidden from the frontend to protect your data.
 * **Rich Map Notifications:** Optionally integrate a free Mapbox API key to instantly generate and attach a street-level map of the outage area directly to your phone's lock screen.
 * **Event History Logs:** Persistently tracks the duration, severity, and timestamps of every local grid outage, UPS battery event, hardware reboots, and network downtime so you can review your infrastructure stability over time. The view limits to the 2 most recent events to keep things tidy, with an option to load the full history logs.
@@ -106,6 +106,7 @@ The app will initially load as a "Blank Slate". Click the **⚙️ Settings** bu
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
 1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
 2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
+3. The Settings page checks for newer Tailscale packages (cached for up to an hour) and shows an **Update Tailscale** button whenever one is available, so you can pick up Tailscale patches immediately instead of waiting for the next Outage Tracker image release.
 
 ### 2. Utility Grid Settings
 To track your local power grid, the app uses an **Auto-Discovery engine**:
