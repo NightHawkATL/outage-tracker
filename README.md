@@ -134,6 +134,7 @@ If you run a local NUT server, enter its IP and Port.
 Continuously ping up to two devices to detect ISP or local network failures. You can enter your home's Public IP, a Dynamic DNS hostname, or a secure Tailscale IP (e.g., `100.x.x.x`). 
 * If your target goes offline longer than the configured threshold, a network downtime alert will be sent.
 * Configure the secondary failover target for multi-WAN setups.
+* When the target port is `443`, the watchdog completes a full TLS handshake instead of an abrupt connect-and-close. This means the check looks like a normal HTTPS client to reverse proxies and WAF/bouncer tools (e.g., CrowdSec behind Zoraxy), so you don't need to keep port 80 open on your home firewall just to satisfy the watchdog.
 
 ### 5. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
