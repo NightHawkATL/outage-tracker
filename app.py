@@ -1,6 +1,7 @@
 import os
 import time
 import socket
+import ssl
 import signal
 import shutil
 import threading
@@ -1374,6 +1375,21 @@ def poll_snmp():
                 break
             time.sleep(1)
 
+def check_watchdog_target(ip, port, timeout=4):
+    # Completing the TLS handshake on 443 (instead of an abrupt connect+close) avoids
+    # tripping WAF/bouncer tools like CrowdSec that flag bare, protocol-less connections.
+    try:
+        with socket.create_connection((ip, int(port)), timeout=timeout) as sock:
+            if int(port) == 443:
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                with context.wrap_socket(sock, server_hostname=str(ip)):
+                    pass
+        return True
+    except Exception:
+        return False
+
 def poll_watchdog():
     while True:
         c_ip1 = app_config.get("watchdog_ip")
@@ -1388,13 +1404,7 @@ def poll_watchdog():
             thresh = app_config.get(f"watchdog_threshold{suffix}", 5)
 
             if ip:
-                is_online = False
-                try:
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        s.settimeout(4)
-                        s.connect((ip, int(port)))
-                        is_online = True
-                except Exception: pass
+                is_online = check_watchdog_target(ip, port)
 
                 state["watchdog_last_check"] = datetime.now().strftime("%I:%M:%S %p")
                 wd_state = state["watchdogs"][w_id]
