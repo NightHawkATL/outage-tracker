@@ -249,15 +249,33 @@
                             <div class="small text-muted">
                                 Tailscale version: <span class="text-white">{{ ts_update.installed or "Unknown" }}</span>
                                 {% if ts_update.update_available %}
-                                    <span class="badge bg-warning text-dark ms-1">Update available: {{ ts_update.available }}</span>
+                                    <span class="badge bg-warning text-dark ms-1">Update available: {{ ts_update.latest_upstream }}</span>
+                                {% endif %}
+                                {% if ts_update.update_available and not ts_update.apk_update_available %}
+                                    <div class="text-warning small mt-1">Alpine's package repo doesn't have {{ ts_update.latest_upstream }} yet, so Update isn't available until it does.</div>
                                 {% endif %}
                                 {% if ts_update.error %}
                                     <div class="text-danger small mt-1">Update check failed: {{ ts_update.error }}</div>
                                 {% endif %}
                             </div>
-                            <button type="button" id="tsUpdateBtn" class="btn btn-outline-info btn-sm" onclick="updateTailscale()" {% if not ts_update.update_available %}disabled{% endif %}>
-                                🔄 Update Tailscale
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button type="button" id="tsCheckBtn" class="btn btn-outline-secondary btn-sm" onclick="checkTailscaleUpdate()">
+                                    🔍 Check Now
+                                </button>
+                                <button type="button" id="tsUpdateBtn" class="btn btn-outline-info btn-sm" onclick="updateTailscale()" {% if not ts_update.apk_update_available %}disabled{% endif %}>
+                                    🔄 Update Tailscale
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-12">
+                                <label class="form-label">Update Check Frequency</label>
+                                <select name="ts_update_check_interval_hours" class="form-select bg-dark text-white border-secondary">
+                                    <option value="24" {% if config.ts_update_check_interval_hours|int != 168 %}selected{% endif %}>Daily</option>
+                                    <option value="168" {% if config.ts_update_check_interval_hours|int == 168 %}selected{% endif %}>Weekly</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -511,6 +529,24 @@
     </div>
 
     <script>
+        function checkTailscaleUpdate() {
+            const btn = document.getElementById('tsCheckBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ Checking...";
+
+            fetch('/tailscale/check-update', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    window.location.reload();
+                })
+                .catch(() => {
+                    alert("Error communicating with server.");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+        }
+
         function updateTailscale() {
             const btn = document.getElementById('tsUpdateBtn');
             const originalText = btn.innerHTML;

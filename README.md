@@ -106,7 +106,7 @@ The app will initially load as a "Blank Slate". Click the **⚙️ Settings** bu
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
 1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
 2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
-3. The Settings page checks for newer Tailscale packages (cached for up to an hour) and shows an **Update Tailscale** button whenever one is available, so you can pick up Tailscale patches immediately instead of waiting for the next Outage Tracker image release.
+3. The Settings page compares your installed Tailscale version against Tailscale's actual latest upstream release (not just Alpine's package mirror), checking on the schedule you choose (Daily or Weekly), or on demand via the **Check Now** button. If a newer version is available, an **Update Tailscale** button lets you apply it in place. Note: the update itself still installs whatever version Alpine's `tailscale` package currently offers, which can lag behind the very latest upstream release — the badge will tell you if that's the case.
 
 ### 2. Utility Grid Settings
 To track your local power grid, the app uses an **Auto-Discovery engine**:
