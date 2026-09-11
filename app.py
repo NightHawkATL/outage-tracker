@@ -45,10 +45,20 @@ _update_cache = {"latest": None, "checked": 0, "error": None}
 _update_cache_lock = threading.Lock()
 
 # --- Tailscale Update Check (with caching) ---
-_ts_update_cache = {"installed": None, "available": None, "update_available": False, "checked": 0, "error": None}
+_ts_update_cache = {
+    "installed": None,
+    "latest_upstream": None,
+    "available": None,
+    "update_available": False,
+    "apk_update_available": False,
+    "alerted_apk_version": None,
+    "checked": 0,
+    "error": None,
+}
 _ts_update_cache_lock = threading.Lock()
 _ts_update_refresh_in_progress = False
-TS_UPDATE_CACHE_TTL = 3600  # seconds (1 hour)
+TS_UPDATE_CACHE_TTL = 3600  # seconds (1 hour) fallback if not configured
+TAILSCALE_RELEASES_URL = "https://api.github.com/repos/tailscale/tailscale/releases/latest"
 TAILSCALED_STATE_ARG = "--state=/app/data/tailscaled.state"
 DOCKERHUB_REPO = "nighthawkatl/outage-tracker"
 DOCKERHUB_TAGS_URL = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_REPO}/tags?page_size=50&page=1&ordering=last_updated"
@@ -194,10 +204,21 @@ def get_tailscale_installed_version():
     return None
 
 
+def get_tailscale_latest_upstream_version():
+    try:
+        resp = requests.get(TAILSCALE_RELEASES_URL, headers={"Accept": "application/vnd.github+json"}, timeout=10)
+        resp.raise_for_status()
+        tag = str(resp.json().get("tag_name", "")).strip()
+        return tag.lstrip("v") or None
+    except Exception:
+        return None
+
+
 def _refresh_tailscale_update_cache():
     global _ts_update_refresh_in_progress
     installed = get_tailscale_installed_version()
-    available = None
+    latest_upstream = get_tailscale_latest_upstream_version()
+    apk_available = None
     error = None
     try:
         subprocess.run(["apk", "update"], capture_output=True, text=True, timeout=10)
@@ -207,22 +228,40 @@ def _refresh_tailscale_update_cache():
                 if line.startswith("tailscale-"):
                     match = re.match(r"tailscale-([\d.]+)-r\d+", line)
                     if match:
-                        available = match.group(1)
+                        apk_available = match.group(1)
                     break
         else:
             error = res.stderr.strip() or "apk list failed"
     except Exception as exc:
         error = str(exc)
 
+    is_update_available = bool(latest_upstream) and update_available(installed, latest_upstream)
+    apk_update_available = bool(apk_available) and update_available(installed, apk_available)
+
     with _ts_update_cache_lock:
+        previously_alerted = _ts_update_cache.get("alerted_apk_version")
+        alerted_apk_version = previously_alerted if apk_update_available else None
         _ts_update_cache.update({
             "installed": installed,
-            "available": available,
-            "update_available": bool(available) and update_available(installed, available),
+            "latest_upstream": latest_upstream,
+            "available": apk_available,
+            "update_available": is_update_available,
+            "apk_update_available": apk_update_available,
+            "alerted_apk_version": alerted_apk_version,
             "checked": time.time(),
             "error": error,
         })
         _ts_update_refresh_in_progress = False
+
+    if apk_update_available and apk_available != previously_alerted:
+        sent = send_pushover(
+            "🔐 Tailscale Update Available",
+            f"An Alpine package update is available for Tailscale. Installed: {installed}. Alpine: {apk_available}. Latest upstream: {latest_upstream or 'unknown'}.",
+            priority=0,
+        )
+        with _ts_update_cache_lock:
+            if sent:
+                _ts_update_cache["alerted_apk_version"] = apk_available
 
 
 def get_tailscale_update_info(force=False):
@@ -233,9 +272,17 @@ def get_tailscale_update_info(force=False):
         with _ts_update_cache_lock:
             return dict(_ts_update_cache)
 
+    interval_hours = app_config.get("ts_update_check_interval_hours", 24)
+    if not interval_hours or int(interval_hours) <= 0:
+        # Automatic checks disabled; only the manual "Check Now" (force=True) path runs.
+        with _ts_update_cache_lock:
+            return dict(_ts_update_cache)
+
+    ttl_seconds = max(int(interval_hours) * 3600, 3600)
+
     now = time.time()
     with _ts_update_cache_lock:
-        is_stale = not _ts_update_cache["checked"] or (now - _ts_update_cache["checked"] >= TS_UPDATE_CACHE_TTL)
+        is_stale = not _ts_update_cache["checked"] or (now - _ts_update_cache["checked"] >= ttl_seconds)
         should_start_refresh = is_stale and not _ts_update_refresh_in_progress
         if should_start_refresh:
             _ts_update_refresh_in_progress = True
@@ -283,10 +330,6 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
 
-try:
-    subprocess.run(["tailscale", "set", "--accept-routes=true"], check=False)
-except: pass
-
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'wb') as kf: kf.write(Fernet.generate_key())
 
@@ -306,6 +349,8 @@ def load_config():
             cfg.setdefault("latitude", "")
             cfg.setdefault("longitude", "")
             cfg.setdefault("ts_authkey", "")
+            cfg.setdefault("ts_accept_routes", False)
+            cfg.setdefault("ts_update_check_interval_hours", 24)
             cfg.setdefault("session_timeout", 24)
             cfg.setdefault("timezone", "America/New_York")
             cfg.setdefault("ui_layout", "2x2")
@@ -373,6 +418,8 @@ def load_config():
         "snmp_v3_priv_protocol_2": "AES", "snmp_v3_priv_password_2": "",
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
+        "ts_accept_routes": False,
+        "ts_update_check_interval_hours": 24,
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
         "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5,
         "mqtt_host": "", "mqtt_port": 1883, "mqtt_username": "", "mqtt_password": "",
@@ -429,6 +476,14 @@ def filter_history_entries(entries, mode, cutoff_date, keep_count, date_field):
     return entries
 
 app_config = load_config()
+
+try:
+    subprocess.run(
+        ["tailscale", "set", f"--accept-routes={'true' if app_config.get('ts_accept_routes') else 'false'}"],
+        check=False,
+    )
+except Exception:
+    pass
 
 os.environ['TZ'] = app_config.get("timezone", "America/New_York")
 time.tzset()
@@ -1012,11 +1067,18 @@ def config_page():
         time.tzset()
 
         new_ts_key = get_secure("ts_authkey")
+        ts_accept_routes = request.form.get("ts_accept_routes") == "on"
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
-            try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=true"], check=True)
+            accept_routes_flag = f"--accept-routes={'true' if ts_accept_routes else 'false'}"
+            try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", accept_routes_flag], check=True)
             except Exception as e: logging.error(f"Tailscale auth failed: {e}")
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
+        else:
+            try:
+                subprocess.run(["tailscale", "set", f"--accept-routes={'true' if ts_accept_routes else 'false'}"], check=False)
+            except Exception:
+                pass
 
         api_url = request.form.get("kubra_url", "").strip()
         map_url = request.form.get("map_url", "").strip()
@@ -1074,6 +1136,8 @@ def config_page():
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
+            "ts_accept_routes": ts_accept_routes,
+            "ts_update_check_interval_hours": get_int("ts_update_check_interval_hours", 24),
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
@@ -1115,6 +1179,14 @@ def tailscale_update_route():
     except Exception as exc:
         logging.error(f"Tailscale update failed: {exc}")
         return jsonify({"status": "error", "message": "Tailscale update failed. Check server logs."}), 500
+
+@app.route("/tailscale/check-update", methods=["POST"])
+@login_required
+def tailscale_check_update_route():
+    info = get_tailscale_update_info(force=True)
+    if info.get("error"):
+        return jsonify({"status": "error", "message": f"Check failed: {info['error']}", **info}), 500
+    return jsonify({"status": "success", "message": "Update check complete.", **info})
 
 def get_ts_status():
     ts_status = "Offline"

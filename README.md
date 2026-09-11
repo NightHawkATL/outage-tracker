@@ -106,7 +106,8 @@ The app will initially load as a "Blank Slate". Click the **⚙️ Settings** bu
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
 1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
 2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
-3. The Settings page checks for newer Tailscale packages (cached for up to an hour) and shows an **Update Tailscale** button whenever one is available, so you can pick up Tailscale patches immediately instead of waiting for the next Outage Tracker image release.
+3. **Accept Subnet Routes** is off by default. Only enable it if you specifically need to reach devices behind another tailnet subnet router — enabling it means this container will accept and route through any subnet another tailnet device advertises, which can conflict with its own local network and lock you out of the app itself (see [Tailscale Route Hijack](#3-the-tailscale-route-hijack-fix) below). If that happens, run `docker exec -it <container> tailscale set --accept-routes=false` from the Docker host to recover.
+4. The Settings page compares your installed Tailscale version against Tailscale's actual latest upstream release (not just Alpine's package mirror), checking on the schedule you choose (Daily or Weekly), or on demand via the **Check Now** button. If a newer version is available, an **Update Tailscale** button lets you apply it in place. Note: the update itself still installs whatever version Alpine's `tailscale` package currently offers, which can lag behind the very latest upstream release — the badge will tell you if that's the case.
 
 ### 2. Utility Grid Settings
 To track your local power grid, the app uses an **Auto-Discovery engine**:
@@ -259,9 +260,15 @@ sudo ufw allow from 10.0.0.0/8 to any port 3493
 ### 3. The "Tailscale Route Hijack" Fix
 If local devices suddenly lose access to your NUT server (if it is on a different VLAN) after installing Tailscale, you are likely experiencing **Asymmetric Routing**. The NUT server receives the local packet, but attempts to send the reply back *through* the Tailscale tunnel instead of your physical router.
 
-To fix this, disable route acceptance on the NUT server so it ignores Tailscale subnets and respects your physical router's routing table:
+This same issue can affect Outage Tracker's own container if **Accept Subnet Routes** is enabled in Settings and another tailnet device advertises a subnet that overlaps with the container's network — traffic back to your browser can get pulled into the tunnel instead of reaching you, making the app appear to hang or become unreachable. **Accept Subnet Routes** is off by default specifically to avoid this; only turn it on if you understand the risk.
+
+To fix this, disable route acceptance so it ignores Tailscale subnets and respects your physical router's routing table:
 ```bash
 sudo tailscale up --accept-routes=false
+```
+If this happens to the Outage Tracker container itself and you're locked out of the Web UI, run this from the Docker host instead:
+```bash
+docker exec -it <container-name> tailscale set --accept-routes=false
 ```
 *(Alternatively, create a Layer 3 pinhole rule in your primary router/firewall to pass traffic directly between the VLANs, keeping local traffic entirely off the VPN).*
 
