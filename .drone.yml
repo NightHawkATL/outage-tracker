@@ -84,10 +84,12 @@ steps:
         from_secret: DOCKER_PASSWORD
     commands:
       - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-      - docker buildx create --use --name multiarch-builder || true
+      - docker buildx rm multiarch-builder || true
+      - docker buildx create --use --name multiarch-builder
       - |
         if echo "${DRONE_TAG}" | grep -Eq "ci-test"; then
           docker buildx build \
+            --no-cache \
             --platform linux/amd64,linux/arm64 \
             --build-arg APP_VERSION=${DRONE_TAG} \
             -t $DOCKER_USERNAME/outage-tracker:${DRONE_TAG} \
@@ -95,6 +97,7 @@ steps:
             .
         else
           docker buildx build \
+            --no-cache \
             --platform linux/amd64,linux/arm64 \
             --build-arg APP_VERSION=${DRONE_TAG} \
             -t $DOCKER_USERNAME/outage-tracker:${DRONE_TAG} \
