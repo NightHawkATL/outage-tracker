@@ -11,6 +11,7 @@
         .card { background-color: #1e1e1e; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .form-label { font-weight: bold; color: #adb5bd; }
         .progress { height: 8px; background-color: #333; }
+        .save-bar { position: sticky; bottom: 0; z-index: 20; background-color: rgba(18, 18, 18, 0.95); backdrop-filter: blur(4px); padding: 1rem 0; margin-top: 1.5rem; }
     </style>
 </head>
 <body>
@@ -281,9 +282,11 @@
                             <div class="col-12">
                                 <label class="form-label">Update Check Frequency</label>
                                 <select name="ts_update_check_interval_hours" class="form-select bg-dark text-white border-secondary">
-                                    <option value="24" {% if config.ts_update_check_interval_hours|int != 168 %}selected{% endif %}>Daily</option>
+                                    <option value="24" {% if config.ts_update_check_interval_hours|int == 24 %}selected{% endif %}>Daily</option>
                                     <option value="168" {% if config.ts_update_check_interval_hours|int == 168 %}selected{% endif %}>Weekly</option>
+                                    <option value="0" {% if config.ts_update_check_interval_hours|int == 0 %}selected{% endif %}>None (Manual Only)</option>
                                 </select>
+                                <p class="small text-muted mb-0 mt-1">When an update is found, a Pushover alert is sent (if Pushover is configured below) in addition to the badge shown here.</p>
                             </div>
                         </div>
                     </div>
@@ -518,9 +521,11 @@
             </div>
 
             <!-- Save Section -->
-            <p class="small text-warning text-center mb-3">🔒 For your security, saved API Keys and Coordinates are hidden from the interface. <br>Leave the fields blank to keep your current settings, or type <code>clear</code> to remove them.</p>
-            
-            <button type="submit" id="saveBtn" class="btn btn-success w-100 p-3 fw-bold fs-5 mb-5">💾 Save Configuration</button>
+            <div class="save-bar">
+                <p class="small text-warning text-center mb-3">🔒 For your security, saved API Keys and Coordinates are hidden from the interface. <br>Leave the fields blank to keep your current settings, or type <code>clear</code> to remove them.</p>
+                
+                <button type="submit" id="saveBtn" class="btn btn-success w-100 p-3 fw-bold fs-5">💾 Save Configuration</button>
+            </div>
         </form>
 
         <!-- Footer -->
