@@ -218,6 +218,11 @@
                                 <label class="form-label">Discovery Prefix</label>
                                 <input type="text" name="mqtt_discovery_prefix" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_discovery_prefix }}" placeholder="homeassistant">
                             </div>
+                            <div class="col-12 d-flex justify-content-end">
+                                <button type="button" id="mqttRepublishBtn" class="btn btn-outline-info btn-sm" onclick="republishMqtt()" {% if mqtt_status == "Not Configured" %}disabled{% endif %}>
+                                    📡 Republish MQTT
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -543,6 +548,26 @@
     </div>
 
     <script>
+        function republishMqtt() {
+            const btn = document.getElementById('mqttRepublishBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ Republishing...";
+
+            fetch('/mqtt/republish', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                })
+                .catch(() => {
+                    alert("Error communicating with server.");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+        }
+
         function checkTailscaleUpdate() {
             const btn = document.getElementById('tsCheckBtn');
             const originalText = btn.innerHTML;
