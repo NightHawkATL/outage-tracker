@@ -51,7 +51,7 @@ _ts_update_cache = {
     "available": None,
     "update_available": False,
     "apk_update_available": False,
-    "alerted_version": None,
+    "alerted_apk_version": None,
     "checked": 0,
     "error": None,
 }
@@ -236,30 +236,32 @@ def _refresh_tailscale_update_cache():
         error = str(exc)
 
     is_update_available = bool(latest_upstream) and update_available(installed, latest_upstream)
+    apk_update_available = bool(apk_available) and update_available(installed, apk_available)
 
     with _ts_update_cache_lock:
-        previously_alerted = _ts_update_cache.get("alerted_version")
-        alerted_version = previously_alerted if is_update_available else None
+        previously_alerted = _ts_update_cache.get("alerted_apk_version")
+        alerted_apk_version = previously_alerted if apk_update_available else None
         _ts_update_cache.update({
             "installed": installed,
             "latest_upstream": latest_upstream,
             "available": apk_available,
             "update_available": is_update_available,
-            "apk_update_available": bool(apk_available) and update_available(installed, apk_available),
-            "alerted_version": alerted_version,
+            "apk_update_available": apk_update_available,
+            "alerted_apk_version": alerted_apk_version,
             "checked": time.time(),
             "error": error,
         })
         _ts_update_refresh_in_progress = False
 
-    if is_update_available and latest_upstream != previously_alerted:
-        send_pushover(
+    if apk_update_available and apk_available != previously_alerted:
+        sent = send_pushover(
             "🔐 Tailscale Update Available",
-            f"A newer Tailscale version ({latest_upstream}) is available. Installed: {installed}.",
+            f"An Alpine package update is available for Tailscale. Installed: {installed}. Alpine: {apk_available}. Latest upstream: {latest_upstream or 'unknown'}.",
             priority=0,
         )
         with _ts_update_cache_lock:
-            _ts_update_cache["alerted_version"] = latest_upstream
+            if sent:
+                _ts_update_cache["alerted_apk_version"] = apk_available
 
 
 def get_tailscale_update_info(force=False):
