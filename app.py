@@ -841,12 +841,12 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
 
     return messages
 
-def publish_mqtt_status(force_discovery=False):
+def publish_mqtt_status(force_discovery=False, force_publish=False):
     if not mqtt_enabled():
-        return
+        return False
 
-    if not mqtt_initial_state_ready():
-        return
+    if not force_publish and not mqtt_initial_state_ready():
+        return False
 
     with MQTT_PUBLISH_LOCK:
         try:
@@ -860,8 +860,10 @@ def publish_mqtt_status(force_discovery=False):
                 auth=mqtt_auth_config(),
                 keepalive=10,
             )
+            return True
         except Exception as exc:
             logging.warning("MQTT publish failed: %s", exc)
+            return False
 
 
 def mqtt_heartbeat_loop():
@@ -1156,6 +1158,15 @@ def test_pushover():
     if send_pushover("🔔 Pushover Test", "Configuration working perfectly.", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
+
+@app.route("/mqtt/republish", methods=["POST"])
+@login_required
+def mqtt_republish_route():
+    if not mqtt_enabled():
+        return jsonify({"status": "error", "message": "MQTT is not configured."}), 400
+    if publish_mqtt_status(force_discovery=True, force_publish=True):
+        return jsonify({"status": "success", "message": "MQTT status and Home Assistant discovery republished."})
+    return jsonify({"status": "error", "message": "MQTT republish failed. Check the broker credentials and connection."}), 502
 
 @app.route("/tailscale/update", methods=["POST"])
 @login_required
