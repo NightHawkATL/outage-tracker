@@ -551,20 +551,40 @@
         function republishMqtt() {
             const btn = document.getElementById('mqttRepublishBtn');
             const originalText = btn.innerHTML;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
             btn.disabled = true;
             btn.innerHTML = "⏳ Republishing...";
 
-            fetch('/mqtt/republish', { method: 'POST' })
-                .then(response => response.json())
+            fetch('/mqtt/republish', { method: 'POST', signal: controller.signal })
+                .then(async response => {
+                    const text = await response.text();
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (error) {
+                        throw new Error(`Server returned HTTP ${response.status}.`);
+                    }
+                    if (!response.ok) {
+                        throw new Error(data.message || `Server returned HTTP ${response.status}.`);
+                    }
+                    return data;
+                })
                 .then(data => {
                     alert(data.message);
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                 })
-                .catch(() => {
-                    alert("Error communicating with server.");
+                .catch(error => {
+                    const message = error.name === 'AbortError'
+                        ? "MQTT republish timed out. Check that the Outage Tracker and Home Assistant Tailscale peers are connected."
+                        : error.message;
+                    alert(message);
                     btn.innerHTML = originalText;
                     btn.disabled = false;
+                })
+                .finally(() => {
+                    clearTimeout(timeout);
                 });
         }
 

@@ -494,7 +494,7 @@ state = {
     "alert_sent": False, "last_check": None, "error_msg": None, "etr": "Unavailable",
     "discovery_failed": False,
     "nut_enabled": bool(app_config.get("nut_host") or app_config.get("nut_host_2")), 
-    "ups_data": {}, "nut_last_check": None, "nut_error": None,
+    "ups_data": {}, "nut_last_check": None, "nut_error": None, "mqtt_error": None,
     "watchdogs": {
         "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None},
         "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None}
@@ -860,8 +860,10 @@ def publish_mqtt_status(force_discovery=False, force_publish=False):
                 auth=mqtt_auth_config(),
                 keepalive=10,
             )
+            state["mqtt_error"] = None
             return True
         except Exception as exc:
+            state["mqtt_error"] = str(exc)
             logging.warning("MQTT publish failed: %s", exc)
             return False
 
@@ -1166,7 +1168,8 @@ def mqtt_republish_route():
         return jsonify({"status": "error", "message": "MQTT is not configured."}), 400
     if publish_mqtt_status(force_discovery=True, force_publish=True):
         return jsonify({"status": "success", "message": "MQTT status and Home Assistant discovery republished."})
-    return jsonify({"status": "error", "message": "MQTT republish failed. Check the broker credentials and connection."}), 502
+    detail = state.get("mqtt_error") or "Check the broker credentials and connection."
+    return jsonify({"status": "error", "message": f"MQTT republish failed: {detail}"}), 502
 
 @app.route("/tailscale/update", methods=["POST"])
 @login_required
