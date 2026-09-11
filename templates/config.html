@@ -241,6 +241,15 @@
                                 <label class="form-label">Tailscale Auth Key</label>
                                 <input type="text" name="ts_authkey" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ts_authkey %}•••••••• (Saved) - Type 'clear' to disconnect{% else %}tskey-auth-...{% endif %}">
                             </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input type="checkbox" name="ts_accept_routes" id="tsAcceptRoutes" class="form-check-input" {% if config.ts_accept_routes %}checked{% endif %}>
+                                    <label class="form-check-label small" for="tsAcceptRoutes">
+                                        Accept subnet routes advertised by other tailnet devices (Advanced)
+                                    </label>
+                                </div>
+                                <p class="small text-warning mb-0">Leave this off unless you specifically need it. Enabling it can silently reroute traffic for any subnet that overlaps with this container's own network, potentially locking you out of the app itself if another device on your tailnet advertises an overlapping route.</p>
+                            </div>
                         </div>
 
                         <hr class="border-secondary my-3">

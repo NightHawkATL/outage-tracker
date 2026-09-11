@@ -308,10 +308,6 @@ os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 os.makedirs(KEY_DIR, exist_ok=True)
 
-try:
-    subprocess.run(["tailscale", "set", "--accept-routes=true"], check=False)
-except: pass
-
 if not os.path.exists(KEY_FILE):
     with open(KEY_FILE, 'wb') as kf: kf.write(Fernet.generate_key())
 
@@ -331,6 +327,7 @@ def load_config():
             cfg.setdefault("latitude", "")
             cfg.setdefault("longitude", "")
             cfg.setdefault("ts_authkey", "")
+            cfg.setdefault("ts_accept_routes", False)
             cfg.setdefault("ts_update_check_interval_hours", 24)
             cfg.setdefault("session_timeout", 24)
             cfg.setdefault("timezone", "America/New_York")
@@ -399,6 +396,7 @@ def load_config():
         "snmp_v3_priv_protocol_2": "AES", "snmp_v3_priv_password_2": "",
         "pushover_user": "", "pushover_token": "",
         "mapbox_token": "", "latitude": "", "longitude": "", "ts_authkey": "",
+        "ts_accept_routes": False,
         "ts_update_check_interval_hours": 24,
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
         "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5,
@@ -456,6 +454,14 @@ def filter_history_entries(entries, mode, cutoff_date, keep_count, date_field):
     return entries
 
 app_config = load_config()
+
+try:
+    subprocess.run(
+        ["tailscale", "set", f"--accept-routes={'true' if app_config.get('ts_accept_routes') else 'false'}"],
+        check=False,
+    )
+except Exception:
+    pass
 
 os.environ['TZ'] = app_config.get("timezone", "America/New_York")
 time.tzset()
@@ -1039,11 +1045,18 @@ def config_page():
         time.tzset()
 
         new_ts_key = get_secure("ts_authkey")
+        ts_accept_routes = request.form.get("ts_accept_routes") == "on"
         if new_ts_key and new_ts_key != app_config.get("ts_authkey"):
-            try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", "--accept-routes=true"], check=True)
+            accept_routes_flag = f"--accept-routes={'true' if ts_accept_routes else 'false'}"
+            try: subprocess.run(["tailscale", "up", "--authkey", new_ts_key, "--hostname", "outage-tracker", accept_routes_flag], check=True)
             except Exception as e: logging.error(f"Tailscale auth failed: {e}")
         elif request.form.get("ts_authkey", "").strip().lower() == "clear":
             subprocess.run(["tailscale", "logout"])
+        else:
+            try:
+                subprocess.run(["tailscale", "set", f"--accept-routes={'true' if ts_accept_routes else 'false'}"], check=False)
+            except Exception:
+                pass
 
         api_url = request.form.get("kubra_url", "").strip()
         map_url = request.form.get("map_url", "").strip()
@@ -1101,6 +1114,7 @@ def config_page():
             "latitude": get_secure("latitude"), "longitude": get_secure("longitude"),
             "mapbox_token": get_secure("mapbox_token"), "pushover_user": get_secure("pushover_user"),
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
+            "ts_accept_routes": ts_accept_routes,
             "ts_update_check_interval_hours": get_int("ts_update_check_interval_hours", 24),
         })
         save_config(app_config)
