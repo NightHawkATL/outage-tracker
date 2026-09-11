@@ -66,7 +66,6 @@ trigger:
   event:
     include:
       - tag
-      - create
   ref:
     include:
       - refs/tags/v*
@@ -84,21 +83,28 @@ steps:
         from_secret: DOCKER_PASSWORD
     commands:
       - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-      - docker buildx create --use --name multiarch-builder || true
+      - docker buildx rm multiarch-builder || true
+      - docker buildx create --use --name multiarch-builder
+      - test -n "${DRONE_TAG}" || (echo "DRONE_TAG is required for release builds" && exit 1)
+      - echo "Building release ${DRONE_TAG}"
       - |
         if echo "${DRONE_TAG}" | grep -Eq "ci-test"; then
           docker buildx build \
+            --no-cache \
             --platform linux/amd64,linux/arm64 \
-            --build-arg APP_VERSION=${DRONE_TAG} \
-            -t $DOCKER_USERNAME/outage-tracker:${DRONE_TAG} \
+            --build-arg "APP_VERSION=${DRONE_TAG}" \
+            --label "org.opencontainers.image.version=${DRONE_TAG}" \
+            -t "$DOCKER_USERNAME/outage-tracker:${DRONE_TAG}" \
             --push \
             .
         else
           docker buildx build \
+            --no-cache \
             --platform linux/amd64,linux/arm64 \
-            --build-arg APP_VERSION=${DRONE_TAG} \
-            -t $DOCKER_USERNAME/outage-tracker:${DRONE_TAG} \
-            -t $DOCKER_USERNAME/outage-tracker:latest \
+            --build-arg "APP_VERSION=${DRONE_TAG}" \
+            --label "org.opencontainers.image.version=${DRONE_TAG}" \
+            -t "$DOCKER_USERNAME/outage-tracker:${DRONE_TAG}" \
+            -t "$DOCKER_USERNAME/outage-tracker:latest" \
             --push \
             .
         fi
