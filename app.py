@@ -5,6 +5,7 @@ import ssl
 import signal
 import shutil
 import threading
+import ipaddress
 import requests
 import logging
 import json
@@ -387,6 +388,10 @@ def load_config():
             cfg.setdefault("watchdog_ip_2", "")
             cfg.setdefault("watchdog_port_2", 80)
             cfg.setdefault("watchdog_threshold_2", 5)
+            cfg.setdefault("home_public_ip", "")
+            cfg.setdefault("cloudflare_radar_token", "")
+            cfg.setdefault("watchdog_isp_override", "")
+            cfg.setdefault("watchdog_isp_override_2", "")
             cfg.setdefault("nut_host_2", "")
             cfg.setdefault("nut_port_2", 3493)
             cfg.setdefault("nut_ups_names_2", "auto")
@@ -448,6 +453,8 @@ def load_config():
         "ts_update_check_interval_hours": 24,
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
         "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5,
+        "home_public_ip": "", "cloudflare_radar_token": "",
+        "watchdog_isp_override": "", "watchdog_isp_override_2": "",
         "mqtt_host": "", "mqtt_port": 1883, "mqtt_username": "", "mqtt_password": "",
         "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant"
     }
@@ -543,8 +550,8 @@ state = {
     "ups_data": {}, "nut_last_check": None, "nut_error": None, "mqtt_error": None,
     "mqtt_last_published": None,
     "watchdogs": {
-        "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None},
-        "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None}
+        "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None, "isp_info": None, "radar_status": None},
+        "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None, "isp_info": None, "radar_status": None}
     },
     "watchdog_last_check": None,
     "snmp": {
@@ -647,6 +654,8 @@ def build_dashboard_snapshot():
             "down_minutes": duration,
             "target": app_config.get("watchdog_ip" if w_id == "1" else "watchdog_ip_2", ""),
             "port": app_config.get("watchdog_port" if w_id == "1" else "watchdog_port_2", 80),
+            "isp_info": wd_state.get("isp_info"),
+            "radar_status": wd_state.get("radar_status"),
         }
 
     snmp_devices = {}
@@ -1166,6 +1175,10 @@ def config_page():
             "watchdog_threshold": get_int("watchdog_threshold", 5),
             "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": get_int("watchdog_port_2", 80),
             "watchdog_threshold_2": get_int("watchdog_threshold_2", 5),
+            "home_public_ip": request.form.get("home_public_ip", "").strip(),
+            "cloudflare_radar_token": get_encrypted_secret("cloudflare_radar_token"),
+            "watchdog_isp_override": request.form.get("watchdog_isp_override", "").strip(),
+            "watchdog_isp_override_2": request.form.get("watchdog_isp_override_2", "").strip(),
             "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "").strip(),
             "snmp_version": request.form.get("snmp_version", "2c").strip().lower(),
             "snmp_port": get_int("snmp_port", 161),
@@ -1554,6 +1567,157 @@ def check_watchdog_target(ip, port, timeout=4):
     except Exception:
         return False
 
+# --- ISP Outage Intelligence & Cloudflare Radar helpers ---
+_isp_cache = {}
+_isp_cache_lock = threading.Lock()
+
+def is_private_ip(ip_str):
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or (ip in ipaddress.ip_network('100.64.0.0/10'))
+    except Exception:
+        return False
+
+def resolve_target_public_ip(target, fallback_target=None):
+    if not target:
+        return None
+    raw_target = str(target).strip()
+    try:
+        resolved_ip = socket.gethostbyname(raw_target)
+        if not is_private_ip(resolved_ip):
+            return resolved_ip
+    except Exception:
+        pass
+
+    if fallback_target:
+        raw_fb = str(fallback_target).strip()
+        try:
+            fb_ip = socket.gethostbyname(raw_fb)
+            if not is_private_ip(fb_ip):
+                return fb_ip
+        except Exception:
+            pass
+    return None
+
+def get_isp_downdetector_url(isp_name, asn_str, manual_override=None):
+    if manual_override and manual_override.strip():
+        slug = manual_override.strip().lower().replace(" ", "-")
+        return f"https://downdetector.com/status/{slug}/"
+
+    text = f"{isp_name or ''} {asn_str or ''}".lower()
+    mapping = [
+        ("point broadband", "point-broadband"),
+        ("as400548", "point-broadband"),
+        ("comcast", "comcast-xfinity"),
+        ("xfinity", "comcast-xfinity"),
+        ("as7922", "comcast-xfinity"),
+        ("at&t", "att"),
+        ("as7018", "att"),
+        ("as7132", "att"),
+        ("spectrum", "spectrum"),
+        ("charter", "spectrum"),
+        ("as10796", "spectrum"),
+        ("as20115", "spectrum"),
+        ("cox", "cox"),
+        ("as22773", "cox"),
+        ("centurylink", "centurylink"),
+        ("lumen", "centurylink"),
+        ("as209", "centurylink"),
+        ("frontier", "frontier"),
+        ("as5650", "frontier"),
+        ("verizon", "verizon"),
+        ("as701", "verizon"),
+        ("google fiber", "google-fiber"),
+        ("as16591", "google-fiber"),
+        ("optimum", "optimum"),
+        ("suddenlink", "optimum"),
+        ("windstream", "windstream"),
+        ("mediacom", "mediacom"),
+    ]
+    for key, slug in mapping:
+        if key in text:
+            return f"https://downdetector.com/status/{slug}/"
+    clean_name = re.sub(r'[^a-zA-Z0-9\s]', '', isp_name or '').strip().replace(' ', '+')
+    return f"https://www.google.com/search?q={clean_name}+outage" if clean_name else "https://downdetector.com"
+
+def lookup_isp_info(target_host, fallback_host=None, manual_override=None):
+    pub_ip = resolve_target_public_ip(target_host, fallback_host)
+    if not pub_ip:
+        return None
+
+    cache_key = f"{pub_ip}:{manual_override or ''}"
+    now = time.time()
+    with _isp_cache_lock:
+        cached = _isp_cache.get(cache_key)
+        if cached and (now - cached.get("cached_at", 0) < 86400):
+            return cached["data"]
+
+    data = None
+    try:
+        url = f"http://ip-api.com/json/{pub_ip}?fields=status,message,country,regionName,city,zip,isp,org,as,query"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            res_json = resp.json()
+            if res_json.get("status") == "success":
+                asn_raw = res_json.get("as", "")
+                asn_match = re.search(r'AS\d+', asn_raw)
+                asn = asn_match.group(0) if asn_match else ""
+                isp = res_json.get("isp") or res_json.get("org") or "Unknown ISP"
+                city = res_json.get("city", "")
+                region = res_json.get("regionName", "")
+                loc = f"{city}, {region}".strip(", ")
+
+                data = {
+                    "ip": pub_ip,
+                    "isp": isp,
+                    "org": res_json.get("org", ""),
+                    "asn": asn,
+                    "location": loc,
+                    "downdetector_url": get_isp_downdetector_url(isp, asn, manual_override),
+                }
+    except Exception as e:
+        logging.warning("ISP lookup failed for %s: %s", pub_ip, e)
+
+    if data:
+        with _isp_cache_lock:
+            _isp_cache[cache_key] = {"data": data, "cached_at": now}
+    return data
+
+def check_cloudflare_radar_outages(asn_str):
+    token = decrypt_if_possible(app_config.get("cloudflare_radar_token"))
+    if not token or not asn_str:
+        return None
+
+    asn_num_match = re.search(r'\d+', str(asn_str))
+    if not asn_num_match:
+        return None
+    asn_num = asn_num_match.group(0)
+
+    try:
+        url = f"https://api.cloudflare.com/client/v4/radar/annotations/outages?asn={asn_num}&limit=5"
+        headers = {
+            "Authorization": f"Bearer {token.strip()}",
+            "Accept": "application/json"
+        }
+        resp = requests.get(url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            res_data = resp.json()
+            outages = res_data.get("result", {}).get("annotations", [])
+            active = []
+            for item in outages:
+                # If an outage annotation has no 'endDate' or end date is in future, it's active
+                if not item.get("endDate"):
+                    desc = item.get("description") or item.get("outageType") or "Active routing disruption"
+                    active.append(desc)
+            if active:
+                return {"active": True, "details": "; ".join(active)}
+            return {"active": False, "details": "Normal (No active BGP/ASN disruption)"}
+        elif resp.status_code == 401 or resp.status_code == 403:
+            return {"active": False, "error": "Invalid Cloudflare Token"}
+    except Exception as e:
+        logging.debug("Cloudflare Radar check failed: %s", e)
+    return None
+
 def poll_watchdog():
     while True:
         c_ip1 = app_config.get("watchdog_ip")
@@ -1575,6 +1739,12 @@ def poll_watchdog():
                 wd_state["last_check"] = state["watchdog_last_check"]
                 name = "Primary WAN" if w_id == "1" else "Secondary WAN"
 
+                fb_ip = app_config.get("home_public_ip")
+                override = app_config.get(f"watchdog_isp_override{suffix}")
+                isp_info = lookup_isp_info(ip, fb_ip, override)
+                if isp_info:
+                    wd_state["isp_info"] = isp_info
+
                 if is_online:
                     if not wd_state.get("online", True):
                         elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
@@ -1594,6 +1764,7 @@ def poll_watchdog():
                     wd_state["ever_online"] = True
                     wd_state["down_time"] = None
                     wd_state["alert_sent"] = False
+                    wd_state["radar_status"] = None
                 else:
                     if wd_state.get("online", True):
                         wd_state["online"] = False
@@ -1603,7 +1774,29 @@ def poll_watchdog():
                     if wd_state["down_time"]:
                         elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
                         if elapsed >= thresh and not wd_state["alert_sent"]:
-                            send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
+                            radar_status = None
+                            if isp_info and isp_info.get("asn"):
+                                radar_status = check_cloudflare_radar_outages(isp_info.get("asn"))
+                                wd_state["radar_status"] = radar_status
+
+                            # Build enriched Pushover alert
+                            isp_label = f" ({isp_info['isp']})" if (isp_info and isp_info.get("isp")) else ""
+                            lines = [f"{name}{isp_label} connection to {ip}:{port} failed for >{thresh} mins."]
+                            if isp_info and isp_info.get("asn"):
+                                lines.append(f"ASN: {isp_info['asn']} · {isp_info.get('location', '')}")
+                            if state.get("is_outage"):
+                                zip_code = app_config.get("zip_code", "")
+                                lines.append(f"⚠️ Power grid outage active in {zip_code} (Node power likely down).")
+                            if radar_status:
+                                if radar_status.get("active"):
+                                    lines.append(f"🚨 Cloudflare Radar: {radar_status.get('details')}")
+                                elif radar_status.get("details"):
+                                    lines.append(f"Cloudflare Radar: {radar_status.get('details')}")
+                            if isp_info and isp_info.get("downdetector_url"):
+                                lines.append(f"Check status: {isp_info['downdetector_url']}")
+
+                            msg = "\n".join(lines)
+                            send_pushover("🌐 ⚠️ Network Offline", msg, priority=1)
                             wd_state["alert_sent"] = True
 
         publish_mqtt_status()
