@@ -193,8 +193,8 @@
                                 {% endif %}
                                 {% if w1.isp_info %}
                                     <div class="mt-1 small">
-                                        <span class="badge bg-secondary bg-opacity-50 text-light border border-secondary">{{ w1.isp_info.isp }}{% if w1.isp_info.asn %} ({{ w1.isp_info.asn }}){% endif %}</span>
-                                        {% if w1.isp_info.location %}<span class="text-muted ms-1 small">{{ w1.isp_info.location }}</span>{% endif %}
+                                        <div><span class="badge bg-secondary bg-opacity-50 text-light border border-secondary">{{ w1.isp_info.isp }}{% if w1.isp_info.asn %} ({{ w1.isp_info.asn }}){% endif %}</span></div>
+                                        {% if w1.isp_info.location %}<div class="text-muted small mt-1">{{ w1.isp_info.location }}</div>{% endif %}
                                     </div>
                                     {% if not w1.online and w1.isp_info.downdetector_url %}
                                         <div class="mt-2">
@@ -230,8 +230,8 @@
                                 {% endif %}
                                 {% if w2.isp_info %}
                                     <div class="mt-1 small">
-                                        <span class="badge bg-secondary bg-opacity-50 text-light border border-secondary">{{ w2.isp_info.isp }}{% if w2.isp_info.asn %} ({{ w2.isp_info.asn }}){% endif %}</span>
-                                        {% if w2.isp_info.location %}<span class="text-muted ms-1 small">{{ w2.isp_info.location }}</span>{% endif %}
+                                        <div><span class="badge bg-secondary bg-opacity-50 text-light border border-secondary">{{ w2.isp_info.isp }}{% if w2.isp_info.asn %} ({{ w2.isp_info.asn }}){% endif %}</span></div>
+                                        {% if w2.isp_info.location %}<div class="text-muted small mt-1">{{ w2.isp_info.location }}</div>{% endif %}
                                     </div>
                                     {% if not w2.online and w2.isp_info.downdetector_url %}
                                         <div class="mt-2">
