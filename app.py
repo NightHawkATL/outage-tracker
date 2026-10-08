@@ -238,6 +238,9 @@ def _refresh_tailscale_update_cache():
     except Exception as exc:
         error = str(exc)
 
+    if error:
+        log_service_error("tailscale", error)
+
     is_update_available = bool(latest_upstream) and update_available(installed, latest_upstream)
     apk_update_available = bool(apk_available) and update_available(installed, apk_available)
 
@@ -296,6 +299,26 @@ def get_tailscale_update_info(force=False):
         threading.Thread(target=_refresh_tailscale_update_cache, daemon=True).start()
 
     return snapshot
+
+
+def tailscale_update_monitor_loop():
+    time.sleep(10)
+    while True:
+        try:
+            interval_hours = app_config.get("ts_update_check_interval_hours", 24)
+            if interval_hours and int(interval_hours) > 0:
+                _refresh_tailscale_update_cache()
+        except Exception as e:
+            logging.error(f"Tailscale background update monitor error: {e}")
+
+        # Sleep up to the configured interval, checking hourly in case interval setting changed
+        interval_hours = app_config.get("ts_update_check_interval_hours", 24)
+        total_seconds = max(int(interval_hours) * 3600, 3600) if interval_hours and int(interval_hours) > 0 else 3600
+        for _ in range(total_seconds // 60):
+            time.sleep(60)
+            cur_interval = app_config.get("ts_update_check_interval_hours", 24)
+            if cur_interval != interval_hours:
+                break
 
 
 def find_tailscaled_pid():
@@ -1245,6 +1268,7 @@ def tailscale_update_route():
             "installed": info.get("installed"),
         })
     except Exception as exc:
+        log_service_error("tailscale", f"Upgrade failed: {exc}")
         logging.error(f"Tailscale update failed: {exc}")
         return jsonify({"status": "error", "message": "Tailscale update failed. Check server logs."}), 500
 
@@ -1784,4 +1808,5 @@ if __name__ == "__main__":
     threading.Thread(target=poll_watchdog, daemon=True).start()
     threading.Thread(target=poll_snmp, daemon=True).start()
     threading.Thread(target=mqtt_heartbeat_loop, daemon=True).start()
+    threading.Thread(target=tailscale_update_monitor_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=8080)
