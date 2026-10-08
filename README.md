@@ -136,6 +136,7 @@ Continuously ping up to two devices to detect ISP or local network failures. You
 * If your target goes offline longer than the configured threshold, a network downtime alert will be sent.
 * Configure the secondary failover target for multi-WAN setups.
 * When the target port is `443`, the watchdog completes a full TLS handshake instead of an abrupt connect-and-close. This means the check looks like a normal HTTPS client to reverse proxies and WAF/bouncer tools (e.g., CrowdSec behind Zoraxy), so you don't need to keep port 80 open on your home firewall just to satisfy the watchdog.
+* **ISP & Outage Intelligence:** Automatically resolves your target's public IP to identify the ISP name, Autonomous System Number (ASN), and metro area. When a drop occurs, the watchdog cross-references your local power grid status (detecting if neighborhood node power is down), queries the Cloudflare Radar API for active backbone/BGP routing disruptions, and enriches dashboard and Pushover alerts with direct 1-click status links (e.g., Downdetector). Tailscale/private IP targets can optionally supply a fallback public IP/hostname in Settings.
 
 ### 5. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:

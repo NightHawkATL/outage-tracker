@@ -448,6 +448,30 @@
                                 <input type="number" name="watchdog_threshold_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold_2 }}">
                             </div>
                         </div>
+
+                        <hr class="border-secondary my-3">
+
+                        <h6 class="text-muted text-uppercase mb-2">ISP & Outage Intelligence (Optional)</h6>
+                        <p class="small text-muted mb-3">Automatically identifies your ISP and enriches outage alerts with direct Downdetector / provider links and Cloudflare Radar BGP routing status.</p>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Home Public IP / Hostname Fallback</label>
+                                <input type="text" name="home_public_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.home_public_ip }}" placeholder="e.g. myhome.ddns.net (used if targets are Tailscale 100.x)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Cloudflare Radar API Token</label>
+                                <input type="password" name="cloudflare_radar_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.cloudflare_radar_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}Optional (for ASN outage status){% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted">Primary WAN Downdetector Slug Override</label>
+                                <input type="text" name="watchdog_isp_override" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_isp_override }}" placeholder="e.g. point-broadband (auto-detected if blank)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted">Secondary WAN Downdetector Slug Override</label>
+                                <input type="text" name="watchdog_isp_override_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_isp_override_2 }}" placeholder="e.g. comcast-xfinity (auto-detected if blank)">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Hardware SNMP Monitoring -->
