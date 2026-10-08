@@ -141,6 +141,9 @@ def mqtt_connectivity_state_verified():
 
 
 def mqtt_initial_state_ready():
+    if not mqtt_startup_suppression_active():
+        return True
+
     has_grid = bool(app_config.get("zip_code") and (app_config.get("kubra_url") or app_config.get("map_url")))
     if has_grid and not (state.get("last_check") or state.get("error_msg") or state.get("discovery_failed")):
         return False
@@ -437,15 +440,35 @@ def load_history():
             data = json.load(f)
             if "watchdog" not in data: data["watchdog"] = []
             if "snmp" not in data: data["snmp"] = []
+            if "mqtt_errors" not in data: data["mqtt_errors"] = []
+            if "tailscale_errors" not in data: data["tailscale_errors"] = []
             return data
-    return {"grid": [], "ups": [], "watchdog": [], "snmp": []}
+    return {"grid": [], "ups": [], "watchdog": [], "snmp": [], "mqtt_errors": [], "tailscale_errors": []}
 
 def save_history(history):
-    history["grid"] = history["grid"][-50:]
-    history["ups"] = history["ups"][-50:]
+    history["grid"] = history.get("grid", [])[-50:]
+    history["ups"] = history.get("ups", [])[-50:]
     history["watchdog"] = history.get("watchdog", [])[-50:]
     history["snmp"] = history.get("snmp", [])[-50:]
+    history["mqtt_errors"] = history.get("mqtt_errors", [])[-20:]
+    history["tailscale_errors"] = history.get("tailscale_errors", [])[-20:]
     with open(HISTORY_FILE, 'w') as f: json.dump(history, f, indent=4)
+
+def log_service_error(service, error_msg):
+    hist = load_history()
+    key = f"{service}_errors"
+    if key not in hist:
+        hist[key] = []
+    now_dt = datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %I:%M:%S %p")
+    if hist[key]:
+        last_entry = hist[key][-1]
+        if last_entry.get("error") == str(error_msg):
+            last_time = parse_history_timestamp(last_entry.get("time", ""))
+            if last_time and (now_dt - last_time).total_seconds() < 300:
+                return
+    hist[key].append({"time": now_str, "error": str(error_msg)})
+    save_history(hist)
 
 def backup_history():
     if os.path.exists(HISTORY_FILE):
@@ -495,6 +518,7 @@ state = {
     "discovery_failed": False,
     "nut_enabled": bool(app_config.get("nut_host") or app_config.get("nut_host_2")), 
     "ups_data": {}, "nut_last_check": None, "nut_error": None, "mqtt_error": None,
+    "mqtt_last_published": None,
     "watchdogs": {
         "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None},
         "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None}
@@ -679,6 +703,16 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
     device = mqtt_device_info()
     messages = [{"topic": summary_topic, "payload": json.dumps(snapshot), "retain": True, "qos": 1}]
 
+    for ups_name in sorted(snapshot["nut"]["ups"].keys()):
+        ups_slug = sanitize_topic_part(ups_name)
+        ups_topic = f"{topic_prefix}/ups/{ups_slug}"
+        messages.append({
+            "topic": ups_topic,
+            "payload": json.dumps(snapshot["nut"]["ups"][ups_name]),
+            "retain": True,
+            "qos": 1,
+        })
+
     discovery_signature = hashlib.sha256(
         json.dumps(
             {
@@ -689,7 +723,9 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
             sort_keys=True,
         ).encode('utf-8')
     ).hexdigest()
-    should_publish_discovery = force_discovery or MQTT_DISCOVERY_STATE["signature"] != discovery_signature
+    now_ts = time.time()
+    last_disc_time = MQTT_DISCOVERY_STATE.get("published_at", 0)
+    should_publish_discovery = force_discovery or MQTT_DISCOVERY_STATE["signature"] != discovery_signature or (now_ts - last_disc_time > 3600)
 
     if should_publish_discovery:
         discovery_entities = [
@@ -800,12 +836,6 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
         for ups_name in sorted(snapshot["nut"]["ups"].keys()):
             ups_slug = sanitize_topic_part(ups_name)
             ups_topic = f"{topic_prefix}/ups/{ups_slug}"
-            messages.append({
-                "topic": ups_topic,
-                "payload": json.dumps(snapshot["nut"]["ups"][ups_name]),
-                "retain": True,
-                "qos": 1,
-            })
             for field, label, component in [
                 ("status", "Status", "sensor"),
                 ("charge", "Charge", "sensor"),
@@ -837,7 +867,7 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
                 messages.append({"topic": discovery_topic, "payload": json.dumps(payload), "retain": True, "qos": 1})
 
         MQTT_DISCOVERY_STATE["signature"] = discovery_signature
-        MQTT_DISCOVERY_STATE["published_at"] = time.time()
+        MQTT_DISCOVERY_STATE["published_at"] = now_ts
 
     return messages
 
@@ -861,9 +891,11 @@ def publish_mqtt_status(force_discovery=False, force_publish=False):
                 keepalive=10,
             )
             state["mqtt_error"] = None
+            state["mqtt_last_published"] = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
             return True
         except Exception as exc:
             state["mqtt_error"] = str(exc)
+            log_service_error("mqtt", str(exc))
             logging.warning("MQTT publish failed: %s", exc)
             return False
 
@@ -1152,7 +1184,21 @@ def config_page():
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
     nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
     mqtt_status = get_mqtt_status(app_config.get("mqtt_host"), app_config.get("mqtt_port", 1883))
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), ts_update=get_tailscale_update_info(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
+    hist = load_history()
+    mqtt_errors = hist.get("mqtt_errors", [])[-5:][::-1]
+    tailscale_errors = hist.get("tailscale_errors", [])[-5:][::-1]
+    return render_template(
+        "config.html",
+        config=app_config,
+        ts_status=get_ts_status(),
+        ts_update=get_tailscale_update_info(),
+        nut_status=nut_status_1,
+        nut_status_2=nut_status_2,
+        mqtt_status=mqtt_status,
+        mqtt_last_published=state.get("mqtt_last_published"),
+        mqtt_errors=mqtt_errors,
+        tailscale_errors=tailscale_errors,
+    )
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -1167,9 +1213,17 @@ def mqtt_republish_route():
     if not mqtt_enabled():
         return jsonify({"status": "error", "message": "MQTT is not configured."}), 400
     if publish_mqtt_status(force_discovery=True, force_publish=True):
-        return jsonify({"status": "success", "message": "MQTT status and Home Assistant discovery republished."})
+        return jsonify({
+            "status": "success",
+            "message": "MQTT status and Home Assistant discovery republished.",
+            "last_published": state.get("mqtt_last_published"),
+        })
     detail = state.get("mqtt_error") or "Check the broker credentials and connection."
-    return jsonify({"status": "error", "message": f"MQTT republish failed: {detail}"}), 502
+    return jsonify({
+        "status": "error",
+        "message": f"MQTT republish failed: {detail}",
+        "last_published": state.get("mqtt_last_published"),
+    }), 502
 
 @app.route("/tailscale/update", methods=["POST"])
 @login_required
