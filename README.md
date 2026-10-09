@@ -6,11 +6,12 @@ While standard UPS notification scripts run locally and fail if your home intern
 
 Main Page:  
 
-<img width="1488" height="879" alt="main-1x4-100" src="https://github.com/user-attachments/assets/d6b4cf76-1a02-4ea8-be84-7253fa2f1a17" />
+<img width="1194" height="861" alt="image" src="https://github.com/user-attachments/assets/0ca0d1bc-3bc4-47e2-a34d-268f918acc49" />
 
 History Logs:
 
-<img width="1500" height="342" alt="history-1x4-100" src="https://github.com/user-attachments/assets/2fd8ebb3-7d0d-43e5-bdc3-1c5ec22b9040" />
+<img width="1512" height="552" alt="image" src="https://github.com/user-attachments/assets/40910b76-ec4e-47c6-a5b0-8bf754e03beb" />
+
 
 ## 🤔 Why multi-layer tracking? (Grid, UPS, & Network)
 
@@ -100,7 +101,7 @@ On your first boot, you will be met with a secure login screen.
 
 The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
 
-<img width="2174" height="1969" alt="image" src="https://github.com/user-attachments/assets/a301aeb8-cdd6-4738-95fc-80f72cbe13fd" />
+<img width="1099" height="486" alt="image" src="https://github.com/user-attachments/assets/4a944ff4-1b0a-45bd-be2c-8efa6f6f1f8a" />
 
 ### 1. Built-in Tailscale VPN (For Remote VPS Users)
 If you are running this on a Cloud VPS, **do not** port-forward your home router to expose your NUT server to the internet. 
@@ -160,7 +161,7 @@ If you want the live dashboard state in Home Assistant, install the **Mosquitto 
 3. Leave the default **Topic Prefix** (`outage_tracker`) and **Discovery Prefix** (`homeassistant`) unless you already use a different namespace.
 4. Save the configuration. Outage Tracker will immediately begin publishing retained MQTT status payloads and Home Assistant discovery entities for the grid, UPS, watchdog, and SNMP panels on the dashboard.
 
-<img width="630" height="393" alt="image" src="https://github.com/user-attachments/assets/c2976492-b0a5-4441-abc0-19ce6eb2f3c9" />
+<img width="525" height="459" alt="image" src="https://github.com/user-attachments/assets/3e2a6340-564e-44dc-a5aa-a9ad18c629a7" />
 
 > **Tailscale Note:** You do not need to enable Funnel, Serve, Exit Node, or open public ports just for MQTT if Mosquitto is running on the Home Assistant host itself. Simply keep Home Assistant joined to the same tailnet as Outage Tracker.
 
