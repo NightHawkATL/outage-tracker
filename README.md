@@ -209,16 +209,20 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 ### 🌐 Watchdog Events
 
 **Network Offline** (Priority 1 - High)
-*Triggered when the watchdog fails to ping the target for your configured threshold limit.*
+*Triggered when the watchdog fails to connect to the target for your configured threshold limit. Automatically enriched with detected ISP/ASN details, power grid correlation, Cloudflare Radar status, and direct outage links.*
 > **Title:** 🌐 ⚠️ Network Offline  
 > **Message:**   
-> Primary WAN connection to 100.120.120.122:80 failed for >5 mins.
+> Primary WAN (Point Broadband) connection to 204.116.x.x:443 failed for >5 mins.  
+> ASN: AS400548 · Newnan, Georgia  
+> ⚠️ Power grid outage active in 30265 (Node power likely down).  
+> Cloudflare Radar: Normal (No active BGP/ASN disruption)  
+> Check status: https://downdetector.com/status/point-broadband/
 
 **Network Restored** (Priority 0 - Normal)
 *Triggered when the network target becomes reachable again.*
 > **Title:** ✅ Network Restored  
 > **Message:**   
-> Primary WAN connection to 100.120.120.122:80 restored.  
+> Primary WAN connection to 204.116.x.x:443 restored.  
 > Downtime: 45 mins.
 
 ### 🔔 System Testing
