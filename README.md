@@ -125,7 +125,7 @@ The app will instantly scan the website in the background, bypass any iframes, l
 5. The exact moment the map shades the zip codes, a new file will appear at the bottom of your Network tab (usually named `thematic_areas.json` or `listCA.json`).
 6. Click that file, copy its **Request URL**, and paste it into the UI.
 
-<img width="2175" height="888" alt="outage-map" src="https://github.com/user-attachments/assets/41f174f2-020f-43ee-b3ff-abbf2457491b" />
+<img width="2184" height="876" alt="image" src="https://github.com/user-attachments/assets/fd9c9725-97b1-4bcf-ac21-6f265c66040f" />
 
 ### 3. Local UPS Settings (Optional)
 If you run a local NUT server, enter its IP and Port. 
