@@ -55,7 +55,10 @@
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
             <h2 class="mb-0 d-flex align-items-center fs-3">
                 <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
-                <span class="d-none d-sm-inline">Outage Tracker</span> <span class="badge bg-secondary ms-2 fs-6">{{ app_version }}</span>
+                <span class="d-none d-sm-inline">Outage Tracker</span> 
+                <span id="versionBadge" class="badge ms-2 fs-6 bg-success" style="vertical-align: middle;">
+                    <span id="versionIcon" class="me-1">✓</span><span id="versionText">{{ app_version }}</span>
+                </span>
             </h2>
             
             {% if config.ts_authkey %}
@@ -391,6 +394,8 @@
             try {
                 const badge = document.getElementById('updateBadge');
                 const versionDisplay = document.getElementById('versionDisplay');
+                const versionBadge = document.getElementById('versionBadge');
+                const versionIcon = document.getElementById('versionIcon');
                 const res = await fetch('/api/update');
                 if (res.ok) {
                     const data = await res.json();
@@ -407,8 +412,28 @@
                         badge.classList.remove('d-none');
                         badge.href = `https://hub.docker.com/r/nighthawkatl/outage-tracker/tags`;
                         badge.classList.add('animate-pulse');
+
+                        if (versionBadge) {
+                            versionBadge.className = 'badge ms-2 fs-6 text-dark';
+                            versionBadge.style.backgroundColor = '#ffc107';
+                            versionBadge.style.verticalAlign = 'middle';
+                            versionBadge.title = `Update available: ${data.latest}`;
+                        }
+                        if (versionIcon) {
+                            versionIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-arrow-up-circle-fill me-1" viewBox="0 0 16 16" style="vertical-align: -0.125em;"><path d="M16 8A8 8 0 1 0 0 8a8 8 0 0 0 16 0m-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707z"/></svg>`;
+                        }
                     } else {
                         badge.classList.add('d-none');
+
+                        if (versionBadge) {
+                            versionBadge.className = 'badge ms-2 fs-6 bg-success text-white';
+                            versionBadge.style.backgroundColor = '';
+                            versionBadge.style.verticalAlign = 'middle';
+                            versionBadge.title = 'Up to date';
+                        }
+                        if (versionIcon) {
+                            versionIcon.innerHTML = '✓ ';
+                        }
                     }
                     if (data.latest && versionDisplay) {
                         versionDisplay.title = `Latest: ${data.latest}`;
