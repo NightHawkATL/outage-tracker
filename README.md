@@ -99,7 +99,7 @@ On your first boot, you will be met with a secure login screen.
 
 > **🔐 Forgot your password?** If you get locked out of your dashboard, SSH into your docker host and run `docker exec -it outage-tracker python reset_auth.py`. Your password will instantly reset to `admin` without deleting any of your saved utility or VPN settings!
 
-The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker.
+The app will initially load as a "Blank Slate". Click the **⚙️ Settings** button in the top right of the dashboard to configure your tracker. The **Save Configuration** bar floats at the bottom of the screen with a subtle backdrop blur as you scroll through settings, and snaps to its natural footer position when you reach the bottom.
 
 <img width="1099" height="486" alt="image" src="https://github.com/user-attachments/assets/4a944ff4-1b0a-45bd-be2c-8efa6f6f1f8a" />
 
@@ -108,7 +108,7 @@ If you are running this on a Cloud VPS, **do not** port-forward your home router
 1. Generate an Auth Key from your [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
 2. Paste it into the Web UI. The container will instantly authenticate and join your Tailnet, allowing you to securely ping your home server's `100.x.x.x` IP address.
 3. **Accept Subnet Routes** is off by default. Only enable it if you specifically need to reach devices behind another tailnet subnet router — enabling it means this container will accept and route through any subnet another tailnet device advertises, which can conflict with its own local network and lock you out of the app itself (see [Tailscale Route Hijack](#3-the-tailscale-route-hijack-fix) below). If that happens, run `docker exec -it <container> tailscale set --accept-routes=false` from the Docker host to recover.
-4. The Settings page compares your installed Tailscale version against Tailscale's actual latest upstream release (not just Alpine's package mirror), checking on the schedule you choose (Daily or Weekly), or on demand via the **Check Now** button. If a newer version is available, an **Update Tailscale** button lets you apply it in place. Note: the update itself still installs whatever version Alpine's `tailscale` package currently offers, which can lag behind the very latest upstream release — the badge will tell you if that's the case.
+4. The Settings page compares your installed Tailscale version against Tailscale's actual latest upstream release (not just Alpine's package mirror), checking on the schedule you choose (Daily, Weekly, or None/Manual Only), or on demand via the **Check Now** button. If a newer version is available, an **Update Tailscale** button lets you apply it in place. Note: the update itself still installs whatever version Alpine's `tailscale` package currently offers, which can lag behind the very latest upstream release — the badge will tell you if that's the case. If an update check or package upgrade encounters an error, an unobtrusive **⚠️ Errors** badge appears in the card header with a hover popover detailing the last 5 errors and timestamps.
 
 ### 2. Utility Grid Settings
 To track your local power grid, the app uses an **Auto-Discovery engine**:
@@ -138,6 +138,7 @@ Continuously ping up to two devices to detect ISP or local network failures. You
 * Configure the secondary failover target for multi-WAN setups.
 * When the target port is `443`, the watchdog completes a full TLS handshake instead of an abrupt connect-and-close. This means the check looks like a normal HTTPS client to reverse proxies and WAF/bouncer tools (e.g., CrowdSec behind Zoraxy), so you don't need to keep port 80 open on your home firewall just to satisfy the watchdog.
 * **ISP & Outage Intelligence:** Automatically resolves your target's public IP to identify the ISP name, Autonomous System Number (ASN), and metro area. When a drop occurs, the watchdog cross-references your local power grid status (detecting if neighborhood node power is down), queries the Cloudflare Radar API for active backbone/BGP routing disruptions, and enriches dashboard and Pushover alerts with direct 1-click status links (e.g., Downdetector). Tailscale/private IP targets can optionally supply a fallback public IP/hostname in Settings.
+* **Radar & Downdetector Tuning:** Enter your free Cloudflare Radar API token in Settings to enable BGP disruption checks, and optionally customize the Downdetector provider slug (e.g., `point-broadband`, `comcast-xfinity`) if you use a regional or specialized ISP.
 
 ### 5. Mapbox Image Alerts (Optional)
 To receive rich map images of your neighborhood attached to your Pushover alerts:
@@ -160,6 +161,7 @@ If you want the live dashboard state in Home Assistant, install the **Mosquitto 
 2. In Outage Tracker, open **Settings** and fill in the **MQTT Host / IP**, **Port**, **Username**, and **Password** fields.
 3. Leave the default **Topic Prefix** (`outage_tracker`) and **Discovery Prefix** (`homeassistant`) unless you already use a different namespace.
 4. Save the configuration. Outage Tracker will immediately begin publishing retained MQTT status payloads and Home Assistant discovery entities for the grid, UPS, watchdog, and SNMP panels on the dashboard.
+5. The card displays a live **Last Published** timestamp (updated every 5 minutes when idle, and every 30 seconds during active events) alongside a **📡 Republish MQTT** button to manually re-push all retained states and discovery payloads on demand. If publish or connection issues occur, a hover-over **⚠️ Errors** badge appears in the header with the last 5 error details and timestamps.
 
 <img width="525" height="459" alt="image" src="https://github.com/user-attachments/assets/3e2a6340-564e-44dc-a5aa-a9ad18c629a7" />
 
