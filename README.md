@@ -1,5 +1,3 @@
-![Docker Pulls](https://img.shields.io/docker/pulls/nighthawkatl/outage-tracker?style=flat-square&logo=docker)
-
 # ⚡ Outage Tracker
 
 Outage Tracker is a lightweight, self-hosted Docker application designed to monitor your neighborhood's power grid, your local home rack's battery health, and your home internet connection simultaneously. 
@@ -89,6 +87,8 @@ Start the container:
 docker compose up -d
 ```
 Once running, access the dashboard at `http://<YOUR-DOCKER-IP>:8080`.
+
+![Docker Pulls](https://img.shields.io/docker/pulls/nighthawkatl/outage-tracker?style=flat-square&logo=docker)
 
 ---
 
