@@ -12,6 +12,25 @@
         .form-label { font-weight: bold; color: #adb5bd; }
         .progress { height: 8px; background-color: #333; }
         .save-bar { position: sticky; bottom: 0; z-index: 20; background-color: rgba(18, 18, 18, 0.95); backdrop-filter: blur(4px); padding: 1rem 0; margin-top: 1.5rem; }
+        .error-history-dropdown { position: relative; }
+        .error-history-popover {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 6px;
+            z-index: 1050;
+            width: 340px;
+            max-height: 280px;
+            overflow-y: auto;
+            background-color: #1e1e1e;
+            border: 1px solid #444;
+        }
+        .error-history-dropdown:hover .error-history-popover,
+        .error-history-dropdown:focus-within .error-history-popover {
+            display: block;
+        }
+        .cursor-pointer { cursor: pointer; }
     </style>
 </head>
 <body>
@@ -184,13 +203,33 @@
                     <div class="card p-4 h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h4 class="text-info mb-0">MQTT / Home Assistant (Optional)</h4>
-                            {% if mqtt_status == "Connected" %}
-                                <span class="badge bg-success p-2">{{ mqtt_status }}</span>
-                            {% elif mqtt_status == "Not Configured" %}
-                                <span class="badge bg-secondary p-2">{{ mqtt_status }}</span>
-                            {% else %}
-                                <span class="badge bg-danger p-2">{{ mqtt_status }}</span>
-                            {% endif %}
+                            <div class="d-flex align-items-center gap-2">
+                                {% if mqtt_errors %}
+                                    <div class="error-history-dropdown">
+                                        <span class="badge bg-danger bg-opacity-25 text-danger border border-danger-subtle p-2 cursor-pointer" tabindex="0">
+                                            ⚠️ {{ mqtt_errors|length }} Error{% if mqtt_errors|length > 1 %}s{% endif %}
+                                        </span>
+                                        <div class="error-history-popover p-3 rounded shadow">
+                                            <h6 class="text-danger fw-bold mb-2 pb-1 border-bottom border-secondary small">Recent MQTT Failures (Last 5)</h6>
+                                            <div class="d-flex flex-column gap-2 small">
+                                                {% for err in mqtt_errors %}
+                                                    <div class="p-2 rounded bg-dark border border-secondary">
+                                                        <span class="text-warning fw-bold">{{ err.time }}</span><br>
+                                                        <span class="text-light text-break">{{ err.error }}</span>
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                {% if mqtt_status == "Connected" %}
+                                    <span class="badge bg-success p-2">{{ mqtt_status }}</span>
+                                {% elif mqtt_status == "Not Configured" %}
+                                    <span class="badge bg-secondary p-2">{{ mqtt_status }}</span>
+                                {% else %}
+                                    <span class="badge bg-danger p-2">{{ mqtt_status }}</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <p class="small text-muted mb-3">Publish the live dashboard status into Home Assistant over your tailnet. When configured, Outage Tracker publishes retained MQTT discovery entities and a summary payload for grid, UPS, watchdog, and SNMP state.</p>
                         <div class="row g-3">
@@ -218,7 +257,10 @@
                                 <label class="form-label">Discovery Prefix</label>
                                 <input type="text" name="mqtt_discovery_prefix" class="form-control bg-dark text-white border-secondary" value="{{ config.mqtt_discovery_prefix }}" placeholder="homeassistant">
                             </div>
-                            <div class="col-12 d-flex justify-content-end">
+                            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div class="small text-muted">
+                                    Last Published: <strong id="mqttLastPublished" class="text-white">{{ mqtt_last_published or 'Never' }}</strong>
+                                </div>
                                 <button type="button" id="mqttRepublishBtn" class="btn btn-outline-info btn-sm" onclick="republishMqtt()" {% if mqtt_status == "Not Configured" %}disabled{% endif %}>
                                     📡 Republish MQTT
                                 </button>
@@ -235,11 +277,31 @@
                     <div class="card p-4 border border-secondary h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h4 class="text-info mb-0">Built-in Tailscale VPN (Optional)</h4>
-                            {% if "Connected" in ts_status %}
-                                <span class="badge bg-success p-2">{{ ts_status }}</span>
-                            {% else %}
-                                <span class="badge bg-secondary p-2">{{ ts_status }}</span>
-                            {% endif %}
+                            <div class="d-flex align-items-center gap-2">
+                                {% if tailscale_errors %}
+                                    <div class="error-history-dropdown">
+                                        <span class="badge bg-danger bg-opacity-25 text-danger border border-danger-subtle p-2 cursor-pointer" tabindex="0">
+                                            ⚠️ {{ tailscale_errors|length }} Error{% if tailscale_errors|length > 1 %}s{% endif %}
+                                        </span>
+                                        <div class="error-history-popover p-3 rounded shadow">
+                                            <h6 class="text-danger fw-bold mb-2 pb-1 border-bottom border-secondary small">Recent Tailscale Errors (Last 5)</h6>
+                                            <div class="d-flex flex-column gap-2 small">
+                                                {% for err in tailscale_errors %}
+                                                    <div class="p-2 rounded bg-dark border border-secondary">
+                                                        <span class="text-warning fw-bold">{{ err.time }}</span><br>
+                                                        <span class="text-light text-break">{{ err.error }}</span>
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                {% if "Connected" in ts_status %}
+                                    <span class="badge bg-success p-2">{{ ts_status }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary p-2">{{ ts_status }}</span>
+                                {% endif %}
+                            </div>
                         </div>
                         <p class="small text-muted mb-3">Bridge this container directly to your home Tailscale network. Generate an Auth Key from the <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" class="text-info text-decoration-none">Tailscale Admin Console</a> and paste it below.</p>
                         <div class="row g-3">
@@ -384,6 +446,30 @@
                             <div class="col-md-3">
                                 <label class="form-label text-muted">Threshold (Mins)</label>
                                 <input type="number" name="watchdog_threshold_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_threshold_2 }}">
+                            </div>
+                        </div>
+
+                        <hr class="border-secondary my-3">
+
+                        <h6 class="text-muted text-uppercase mb-2">ISP & Outage Intelligence (Optional)</h6>
+                        <p class="small text-muted mb-3">Automatically identifies your ISP and enriches outage alerts with direct Downdetector / provider links and Cloudflare Radar BGP routing status.</p>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Home Public IP / Hostname Fallback</label>
+                                <input type="text" name="home_public_ip" class="form-control bg-dark text-white border-secondary" value="{{ config.home_public_ip }}" placeholder="e.g. myhome.ddns.net (used if targets are Tailscale 100.x)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Cloudflare Radar API Token</label>
+                                <input type="password" name="cloudflare_radar_token" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.cloudflare_radar_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}Optional (for ASN outage status){% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted">Primary WAN Downdetector Slug Override</label>
+                                <input type="text" name="watchdog_isp_override" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_isp_override }}" placeholder="e.g. point-broadband (auto-detected if blank)">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label text-muted">Secondary WAN Downdetector Slug Override</label>
+                                <input type="text" name="watchdog_isp_override_2" class="form-control bg-dark text-white border-secondary" value="{{ config.watchdog_isp_override_2 }}" placeholder="e.g. comcast-xfinity (auto-detected if blank)">
                             </div>
                         </div>
                     </div>
@@ -572,6 +658,10 @@
                 })
                 .then(data => {
                     alert(data.message);
+                    if (data.last_published) {
+                        const lp = document.getElementById('mqttLastPublished');
+                        if (lp) lp.innerText = data.last_published;
+                    }
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                 })

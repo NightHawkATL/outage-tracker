@@ -5,6 +5,7 @@ import ssl
 import signal
 import shutil
 import threading
+import ipaddress
 import requests
 import logging
 import json
@@ -141,6 +142,9 @@ def mqtt_connectivity_state_verified():
 
 
 def mqtt_initial_state_ready():
+    if not mqtt_startup_suppression_active():
+        return True
+
     has_grid = bool(app_config.get("zip_code") and (app_config.get("kubra_url") or app_config.get("map_url")))
     if has_grid and not (state.get("last_check") or state.get("error_msg") or state.get("discovery_failed")):
         return False
@@ -235,6 +239,9 @@ def _refresh_tailscale_update_cache():
     except Exception as exc:
         error = str(exc)
 
+    if error:
+        log_service_error("tailscale", error)
+
     is_update_available = bool(latest_upstream) and update_available(installed, latest_upstream)
     apk_update_available = bool(apk_available) and update_available(installed, apk_available)
 
@@ -293,6 +300,26 @@ def get_tailscale_update_info(force=False):
         threading.Thread(target=_refresh_tailscale_update_cache, daemon=True).start()
 
     return snapshot
+
+
+def tailscale_update_monitor_loop():
+    time.sleep(10)
+    while True:
+        try:
+            interval_hours = app_config.get("ts_update_check_interval_hours", 24)
+            if interval_hours and int(interval_hours) > 0:
+                _refresh_tailscale_update_cache()
+        except Exception as e:
+            logging.error(f"Tailscale background update monitor error: {e}")
+
+        # Sleep up to the configured interval, checking hourly in case interval setting changed
+        interval_hours = app_config.get("ts_update_check_interval_hours", 24)
+        total_seconds = max(int(interval_hours) * 3600, 3600) if interval_hours and int(interval_hours) > 0 else 3600
+        for _ in range(total_seconds // 60):
+            time.sleep(60)
+            cur_interval = app_config.get("ts_update_check_interval_hours", 24)
+            if cur_interval != interval_hours:
+                break
 
 
 def find_tailscaled_pid():
@@ -361,6 +388,10 @@ def load_config():
             cfg.setdefault("watchdog_ip_2", "")
             cfg.setdefault("watchdog_port_2", 80)
             cfg.setdefault("watchdog_threshold_2", 5)
+            cfg.setdefault("home_public_ip", "")
+            cfg.setdefault("cloudflare_radar_token", "")
+            cfg.setdefault("watchdog_isp_override", "")
+            cfg.setdefault("watchdog_isp_override_2", "")
             cfg.setdefault("nut_host_2", "")
             cfg.setdefault("nut_port_2", 3493)
             cfg.setdefault("nut_ups_names_2", "auto")
@@ -422,6 +453,8 @@ def load_config():
         "ts_update_check_interval_hours": 24,
         "watchdog_ip": "", "watchdog_port": 80, "watchdog_threshold": 5,
         "watchdog_ip_2": "", "watchdog_port_2": 80, "watchdog_threshold_2": 5,
+        "home_public_ip": "", "cloudflare_radar_token": "",
+        "watchdog_isp_override": "", "watchdog_isp_override_2": "",
         "mqtt_host": "", "mqtt_port": 1883, "mqtt_username": "", "mqtt_password": "",
         "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant"
     }
@@ -437,15 +470,35 @@ def load_history():
             data = json.load(f)
             if "watchdog" not in data: data["watchdog"] = []
             if "snmp" not in data: data["snmp"] = []
+            if "mqtt_errors" not in data: data["mqtt_errors"] = []
+            if "tailscale_errors" not in data: data["tailscale_errors"] = []
             return data
-    return {"grid": [], "ups": [], "watchdog": [], "snmp": []}
+    return {"grid": [], "ups": [], "watchdog": [], "snmp": [], "mqtt_errors": [], "tailscale_errors": []}
 
 def save_history(history):
-    history["grid"] = history["grid"][-50:]
-    history["ups"] = history["ups"][-50:]
+    history["grid"] = history.get("grid", [])[-50:]
+    history["ups"] = history.get("ups", [])[-50:]
     history["watchdog"] = history.get("watchdog", [])[-50:]
     history["snmp"] = history.get("snmp", [])[-50:]
+    history["mqtt_errors"] = history.get("mqtt_errors", [])[-20:]
+    history["tailscale_errors"] = history.get("tailscale_errors", [])[-20:]
     with open(HISTORY_FILE, 'w') as f: json.dump(history, f, indent=4)
+
+def log_service_error(service, error_msg):
+    hist = load_history()
+    key = f"{service}_errors"
+    if key not in hist:
+        hist[key] = []
+    now_dt = datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %I:%M:%S %p")
+    if hist[key]:
+        last_entry = hist[key][-1]
+        if last_entry.get("error") == str(error_msg):
+            last_time = parse_history_timestamp(last_entry.get("time", ""))
+            if last_time and (now_dt - last_time).total_seconds() < 300:
+                return
+    hist[key].append({"time": now_str, "error": str(error_msg)})
+    save_history(hist)
 
 def backup_history():
     if os.path.exists(HISTORY_FILE):
@@ -495,9 +548,10 @@ state = {
     "discovery_failed": False,
     "nut_enabled": bool(app_config.get("nut_host") or app_config.get("nut_host_2")), 
     "ups_data": {}, "nut_last_check": None, "nut_error": None, "mqtt_error": None,
+    "mqtt_last_published": None,
     "watchdogs": {
-        "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None},
-        "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None}
+        "1": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None, "isp_info": None, "radar_status": None},
+        "2": {"online": True, "down_time": None, "alert_sent": False, "ever_online": False, "last_check": None, "isp_info": None, "radar_status": None}
     },
     "watchdog_last_check": None,
     "snmp": {
@@ -600,6 +654,8 @@ def build_dashboard_snapshot():
             "down_minutes": duration,
             "target": app_config.get("watchdog_ip" if w_id == "1" else "watchdog_ip_2", ""),
             "port": app_config.get("watchdog_port" if w_id == "1" else "watchdog_port_2", 80),
+            "isp_info": wd_state.get("isp_info"),
+            "radar_status": wd_state.get("radar_status"),
         }
 
     snmp_devices = {}
@@ -679,6 +735,16 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
     device = mqtt_device_info()
     messages = [{"topic": summary_topic, "payload": json.dumps(snapshot), "retain": True, "qos": 1}]
 
+    for ups_name in sorted(snapshot["nut"]["ups"].keys()):
+        ups_slug = sanitize_topic_part(ups_name)
+        ups_topic = f"{topic_prefix}/ups/{ups_slug}"
+        messages.append({
+            "topic": ups_topic,
+            "payload": json.dumps(snapshot["nut"]["ups"][ups_name]),
+            "retain": True,
+            "qos": 1,
+        })
+
     discovery_signature = hashlib.sha256(
         json.dumps(
             {
@@ -689,7 +755,9 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
             sort_keys=True,
         ).encode('utf-8')
     ).hexdigest()
-    should_publish_discovery = force_discovery or MQTT_DISCOVERY_STATE["signature"] != discovery_signature
+    now_ts = time.time()
+    last_disc_time = MQTT_DISCOVERY_STATE.get("published_at", 0)
+    should_publish_discovery = force_discovery or MQTT_DISCOVERY_STATE["signature"] != discovery_signature or (now_ts - last_disc_time > 3600)
 
     if should_publish_discovery:
         discovery_entities = [
@@ -800,12 +868,6 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
         for ups_name in sorted(snapshot["nut"]["ups"].keys()):
             ups_slug = sanitize_topic_part(ups_name)
             ups_topic = f"{topic_prefix}/ups/{ups_slug}"
-            messages.append({
-                "topic": ups_topic,
-                "payload": json.dumps(snapshot["nut"]["ups"][ups_name]),
-                "retain": True,
-                "qos": 1,
-            })
             for field, label, component in [
                 ("status", "Status", "sensor"),
                 ("charge", "Charge", "sensor"),
@@ -837,7 +899,7 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
                 messages.append({"topic": discovery_topic, "payload": json.dumps(payload), "retain": True, "qos": 1})
 
         MQTT_DISCOVERY_STATE["signature"] = discovery_signature
-        MQTT_DISCOVERY_STATE["published_at"] = time.time()
+        MQTT_DISCOVERY_STATE["published_at"] = now_ts
 
     return messages
 
@@ -861,9 +923,11 @@ def publish_mqtt_status(force_discovery=False, force_publish=False):
                 keepalive=10,
             )
             state["mqtt_error"] = None
+            state["mqtt_last_published"] = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
             return True
         except Exception as exc:
             state["mqtt_error"] = str(exc)
+            log_service_error("mqtt", str(exc))
             logging.warning("MQTT publish failed: %s", exc)
             return False
 
@@ -1111,6 +1175,10 @@ def config_page():
             "watchdog_threshold": get_int("watchdog_threshold", 5),
             "watchdog_ip_2": request.form.get("watchdog_ip_2", "").strip(), "watchdog_port_2": get_int("watchdog_port_2", 80),
             "watchdog_threshold_2": get_int("watchdog_threshold_2", 5),
+            "home_public_ip": request.form.get("home_public_ip", "").strip(),
+            "cloudflare_radar_token": get_encrypted_secret("cloudflare_radar_token"),
+            "watchdog_isp_override": request.form.get("watchdog_isp_override", "").strip(),
+            "watchdog_isp_override_2": request.form.get("watchdog_isp_override_2", "").strip(),
             "snmp_ip": request.form.get("snmp_ip", "").strip(), "snmp_name": request.form.get("snmp_name", "").strip(),
             "snmp_version": request.form.get("snmp_version", "2c").strip().lower(),
             "snmp_port": get_int("snmp_port", 161),
@@ -1152,7 +1220,21 @@ def config_page():
     nut_status_1 = get_nut_status(app_config.get("nut_host"), app_config.get("nut_port", 3493))
     nut_status_2 = get_nut_status(app_config.get("nut_host_2"), app_config.get("nut_port_2", 3493))
     mqtt_status = get_mqtt_status(app_config.get("mqtt_host"), app_config.get("mqtt_port", 1883))
-    return render_template("config.html", config=app_config, ts_status=get_ts_status(), ts_update=get_tailscale_update_info(), nut_status=nut_status_1, nut_status_2=nut_status_2, mqtt_status=mqtt_status)
+    hist = load_history()
+    mqtt_errors = hist.get("mqtt_errors", [])[-5:][::-1]
+    tailscale_errors = hist.get("tailscale_errors", [])[-5:][::-1]
+    return render_template(
+        "config.html",
+        config=app_config,
+        ts_status=get_ts_status(),
+        ts_update=get_tailscale_update_info(),
+        nut_status=nut_status_1,
+        nut_status_2=nut_status_2,
+        mqtt_status=mqtt_status,
+        mqtt_last_published=state.get("mqtt_last_published"),
+        mqtt_errors=mqtt_errors,
+        tailscale_errors=tailscale_errors,
+    )
 
 @app.route("/test-pushover", methods=["POST"])
 @login_required
@@ -1167,9 +1249,17 @@ def mqtt_republish_route():
     if not mqtt_enabled():
         return jsonify({"status": "error", "message": "MQTT is not configured."}), 400
     if publish_mqtt_status(force_discovery=True, force_publish=True):
-        return jsonify({"status": "success", "message": "MQTT status and Home Assistant discovery republished."})
+        return jsonify({
+            "status": "success",
+            "message": "MQTT status and Home Assistant discovery republished.",
+            "last_published": state.get("mqtt_last_published"),
+        })
     detail = state.get("mqtt_error") or "Check the broker credentials and connection."
-    return jsonify({"status": "error", "message": f"MQTT republish failed: {detail}"}), 502
+    return jsonify({
+        "status": "error",
+        "message": f"MQTT republish failed: {detail}",
+        "last_published": state.get("mqtt_last_published"),
+    }), 502
 
 @app.route("/tailscale/update", methods=["POST"])
 @login_required
@@ -1191,6 +1281,7 @@ def tailscale_update_route():
             "installed": info.get("installed"),
         })
     except Exception as exc:
+        log_service_error("tailscale", f"Upgrade failed: {exc}")
         logging.error(f"Tailscale update failed: {exc}")
         return jsonify({"status": "error", "message": "Tailscale update failed. Check server logs."}), 500
 
@@ -1476,6 +1567,157 @@ def check_watchdog_target(ip, port, timeout=4):
     except Exception:
         return False
 
+# --- ISP Outage Intelligence & Cloudflare Radar helpers ---
+_isp_cache = {}
+_isp_cache_lock = threading.Lock()
+
+def is_private_ip(ip_str):
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or (ip in ipaddress.ip_network('100.64.0.0/10'))
+    except Exception:
+        return False
+
+def resolve_target_public_ip(target, fallback_target=None):
+    if not target:
+        return None
+    raw_target = str(target).strip()
+    try:
+        resolved_ip = socket.gethostbyname(raw_target)
+        if not is_private_ip(resolved_ip):
+            return resolved_ip
+    except Exception:
+        pass
+
+    if fallback_target:
+        raw_fb = str(fallback_target).strip()
+        try:
+            fb_ip = socket.gethostbyname(raw_fb)
+            if not is_private_ip(fb_ip):
+                return fb_ip
+        except Exception:
+            pass
+    return None
+
+def get_isp_downdetector_url(isp_name, asn_str, manual_override=None):
+    if manual_override and manual_override.strip():
+        slug = manual_override.strip().lower().replace(" ", "-")
+        return f"https://downdetector.com/status/{slug}/"
+
+    text = f"{isp_name or ''} {asn_str or ''}".lower()
+    mapping = [
+        ("point broadband", "point-broadband"),
+        ("as400548", "point-broadband"),
+        ("comcast", "comcast-xfinity"),
+        ("xfinity", "comcast-xfinity"),
+        ("as7922", "comcast-xfinity"),
+        ("at&t", "att"),
+        ("as7018", "att"),
+        ("as7132", "att"),
+        ("spectrum", "spectrum"),
+        ("charter", "spectrum"),
+        ("as10796", "spectrum"),
+        ("as20115", "spectrum"),
+        ("cox", "cox"),
+        ("as22773", "cox"),
+        ("centurylink", "centurylink"),
+        ("lumen", "centurylink"),
+        ("as209", "centurylink"),
+        ("frontier", "frontier"),
+        ("as5650", "frontier"),
+        ("verizon", "verizon"),
+        ("as701", "verizon"),
+        ("google fiber", "google-fiber"),
+        ("as16591", "google-fiber"),
+        ("optimum", "optimum"),
+        ("suddenlink", "optimum"),
+        ("windstream", "windstream"),
+        ("mediacom", "mediacom"),
+    ]
+    for key, slug in mapping:
+        if key in text:
+            return f"https://downdetector.com/status/{slug}/"
+    clean_name = re.sub(r'[^a-zA-Z0-9\s]', '', isp_name or '').strip().replace(' ', '+')
+    return f"https://www.google.com/search?q={clean_name}+outage" if clean_name else "https://downdetector.com"
+
+def lookup_isp_info(target_host, fallback_host=None, manual_override=None):
+    pub_ip = resolve_target_public_ip(target_host, fallback_host)
+    if not pub_ip:
+        return None
+
+    cache_key = f"{pub_ip}:{manual_override or ''}"
+    now = time.time()
+    with _isp_cache_lock:
+        cached = _isp_cache.get(cache_key)
+        if cached and (now - cached.get("cached_at", 0) < 86400):
+            return cached["data"]
+
+    data = None
+    try:
+        url = f"http://ip-api.com/json/{pub_ip}?fields=status,message,country,regionName,city,zip,isp,org,as,query"
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            res_json = resp.json()
+            if res_json.get("status") == "success":
+                asn_raw = res_json.get("as", "")
+                asn_match = re.search(r'AS\d+', asn_raw)
+                asn = asn_match.group(0) if asn_match else ""
+                isp = res_json.get("isp") or res_json.get("org") or "Unknown ISP"
+                city = res_json.get("city", "")
+                region = res_json.get("regionName", "")
+                loc = f"{city}, {region}".strip(", ")
+
+                data = {
+                    "ip": pub_ip,
+                    "isp": isp,
+                    "org": res_json.get("org", ""),
+                    "asn": asn,
+                    "location": loc,
+                    "downdetector_url": get_isp_downdetector_url(isp, asn, manual_override),
+                }
+    except Exception as e:
+        logging.warning("ISP lookup failed for %s: %s", pub_ip, e)
+
+    if data:
+        with _isp_cache_lock:
+            _isp_cache[cache_key] = {"data": data, "cached_at": now}
+    return data
+
+def check_cloudflare_radar_outages(asn_str):
+    token = decrypt_if_possible(app_config.get("cloudflare_radar_token"))
+    if not token or not asn_str:
+        return None
+
+    asn_num_match = re.search(r'\d+', str(asn_str))
+    if not asn_num_match:
+        return None
+    asn_num = asn_num_match.group(0)
+
+    try:
+        url = f"https://api.cloudflare.com/client/v4/radar/annotations/outages?asn={asn_num}&limit=5"
+        headers = {
+            "Authorization": f"Bearer {token.strip()}",
+            "Accept": "application/json"
+        }
+        resp = requests.get(url, headers=headers, timeout=6)
+        if resp.status_code == 200:
+            res_data = resp.json()
+            outages = res_data.get("result", {}).get("annotations", [])
+            active = []
+            for item in outages:
+                # If an outage annotation has no 'endDate' or end date is in future, it's active
+                if not item.get("endDate"):
+                    desc = item.get("description") or item.get("outageType") or "Active routing disruption"
+                    active.append(desc)
+            if active:
+                return {"active": True, "details": "; ".join(active)}
+            return {"active": False, "details": "Normal (No active BGP/ASN disruption)"}
+        elif resp.status_code == 401 or resp.status_code == 403:
+            return {"active": False, "error": "Invalid Cloudflare Token"}
+    except Exception as e:
+        logging.debug("Cloudflare Radar check failed: %s", e)
+    return None
+
 def poll_watchdog():
     while True:
         c_ip1 = app_config.get("watchdog_ip")
@@ -1497,6 +1739,12 @@ def poll_watchdog():
                 wd_state["last_check"] = state["watchdog_last_check"]
                 name = "Primary WAN" if w_id == "1" else "Secondary WAN"
 
+                fb_ip = app_config.get("home_public_ip")
+                override = app_config.get(f"watchdog_isp_override{suffix}")
+                isp_info = lookup_isp_info(ip, fb_ip, override)
+                if isp_info:
+                    wd_state["isp_info"] = isp_info
+
                 if is_online:
                     if not wd_state.get("online", True):
                         elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
@@ -1516,6 +1764,7 @@ def poll_watchdog():
                     wd_state["ever_online"] = True
                     wd_state["down_time"] = None
                     wd_state["alert_sent"] = False
+                    wd_state["radar_status"] = None
                 else:
                     if wd_state.get("online", True):
                         wd_state["online"] = False
@@ -1525,7 +1774,29 @@ def poll_watchdog():
                     if wd_state["down_time"]:
                         elapsed = (datetime.now() - wd_state["down_time"]).total_seconds() / 60
                         if elapsed >= thresh and not wd_state["alert_sent"]:
-                            send_pushover("🌐 ⚠️ Network Offline", f"{name} connection to {ip}:{port} failed for >{thresh} mins.", priority=1)
+                            radar_status = None
+                            if isp_info and isp_info.get("asn"):
+                                radar_status = check_cloudflare_radar_outages(isp_info.get("asn"))
+                                wd_state["radar_status"] = radar_status
+
+                            # Build enriched Pushover alert
+                            isp_label = f" ({isp_info['isp']})" if (isp_info and isp_info.get("isp")) else ""
+                            lines = [f"{name}{isp_label} connection to {ip}:{port} failed for >{thresh} mins."]
+                            if isp_info and isp_info.get("asn"):
+                                lines.append(f"ASN: {isp_info['asn']} · {isp_info.get('location', '')}")
+                            if state.get("is_outage"):
+                                zip_code = app_config.get("zip_code", "")
+                                lines.append(f"⚠️ Power grid outage active in {zip_code} (Node power likely down).")
+                            if radar_status:
+                                if radar_status.get("active"):
+                                    lines.append(f"🚨 Cloudflare Radar: {radar_status.get('details')}")
+                                elif radar_status.get("details"):
+                                    lines.append(f"Cloudflare Radar: {radar_status.get('details')}")
+                            if isp_info and isp_info.get("downdetector_url"):
+                                lines.append(f"Check status: {isp_info['downdetector_url']}")
+
+                            msg = "\n".join(lines)
+                            send_pushover("🌐 ⚠️ Network Offline", msg, priority=1)
                             wd_state["alert_sent"] = True
 
         publish_mqtt_status()
@@ -1730,4 +2001,5 @@ if __name__ == "__main__":
     threading.Thread(target=poll_watchdog, daemon=True).start()
     threading.Thread(target=poll_snmp, daemon=True).start()
     threading.Thread(target=mqtt_heartbeat_loop, daemon=True).start()
+    threading.Thread(target=tailscale_update_monitor_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=8080)

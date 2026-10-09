@@ -178,12 +178,29 @@
                                 <h6 class="text-muted text-uppercase mb-2">Primary WAN</h6>
                                 {% if w1.online %}
                                     <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
-                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
+                                    <p class="small text-muted mb-1">Connected to {{ config.watchdog_ip }}:{{ config.watchdog_port }}</p>
                                 {% else %}
                                     <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
                                     <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip }}:{{ config.watchdog_port }})</p>
-                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["1"] }} mins</p>
-                                    {% if w1.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
+                                    <p class="small text-muted mb-1">Downtime: {{ wd_durations["1"] }} mins</p>
+                                    {% if w1.alert_sent %}<span class="badge bg-danger p-1 mb-1">Network Alert Sent</span>{% endif %}
+                                    {% if state.is_outage %}
+                                        <div class="small text-warning mt-1">⚡ Power outage in {{ config.zip_code }} (Node power likely down)</div>
+                                    {% endif %}
+                                    {% if w1.radar_status and w1.radar_status.active %}
+                                        <div class="small text-danger mt-1">🚨 Radar: {{ w1.radar_status.details }}</div>
+                                    {% endif %}
+                                {% endif %}
+                                {% if w1.isp_info %}
+                                    <div class="mt-1 small">
+                                        <div><span class="badge bg-secondary bg-opacity-50 text-light border border-secondary">{{ w1.isp_info.isp }}{% if w1.isp_info.asn %} ({{ w1.isp_info.asn }}){% endif %}</span></div>
+                                        {% if w1.isp_info.location %}<div class="text-muted small mt-1">{{ w1.isp_info.location }}</div>{% endif %}
+                                    </div>
+                                    {% if not w1.online and w1.isp_info.downdetector_url %}
+                                        <div class="mt-2">
+                                            <a href="{{ w1.isp_info.downdetector_url }}" target="_blank" class="btn btn-outline-warning btn-sm py-0 px-2" style="font-size: 0.75rem;">📊 Check Outages</a>
+                                        </div>
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         {% endif %}
@@ -198,12 +215,29 @@
                                 <h6 class="text-muted text-uppercase mb-2">Secondary WAN</h6>
                                 {% if w2.online %}
                                     <h3 class="status-ok mb-1 fs-5">NETWORK ONLINE</h3>
-                                    <p class="small text-muted mb-0">Connected to {{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }}</p>
+                                    <p class="small text-muted mb-1">Connected to {{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }}</p>
                                 {% else %}
                                     <h3 class="status-outage mb-1 fs-5">NETWORK OFFLINE</h3>
                                     <p class="small text-danger fw-bold mb-1">Target unreachable ({{ config.watchdog_ip_2 }}:{{ config.watchdog_port_2 }})</p>
-                                    <p class="small text-muted mb-0">Downtime: {{ wd_durations["2"] }} mins</p>
-                                    {% if w2.alert_sent %}<span class="badge bg-danger p-1 mt-1">Network Alert Sent</span>{% endif %}
+                                    <p class="small text-muted mb-1">Downtime: {{ wd_durations["2"] }} mins</p>
+                                    {% if w2.alert_sent %}<span class="badge bg-danger p-1 mb-1">Network Alert Sent</span>{% endif %}
+                                    {% if state.is_outage %}
+                                        <div class="small text-warning mt-1">⚡ Power outage in {{ config.zip_code }} (Node power likely down)</div>
+                                    {% endif %}
+                                    {% if w2.radar_status and w2.radar_status.active %}
+                                        <div class="small text-danger mt-1">🚨 Radar: {{ w2.radar_status.details }}</div>
+                                    {% endif %}
+                                {% endif %}
+                                {% if w2.isp_info %}
+                                    <div class="mt-1 small">
+                                        <div><span class="badge bg-secondary bg-opacity-50 text-light border border-secondary">{{ w2.isp_info.isp }}{% if w2.isp_info.asn %} ({{ w2.isp_info.asn }}){% endif %}</span></div>
+                                        {% if w2.isp_info.location %}<div class="text-muted small mt-1">{{ w2.isp_info.location }}</div>{% endif %}
+                                    </div>
+                                    {% if not w2.online and w2.isp_info.downdetector_url %}
+                                        <div class="mt-2">
+                                            <a href="{{ w2.isp_info.downdetector_url }}" target="_blank" class="btn btn-outline-warning btn-sm py-0 px-2" style="font-size: 0.75rem;">📊 Check Outages</a>
+                                        </div>
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         {% endif %}
