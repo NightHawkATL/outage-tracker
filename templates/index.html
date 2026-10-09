@@ -420,7 +420,8 @@
                             versionBadge.title = `Update available: ${data.latest}`;
                         }
                         if (versionIcon) {
-                            versionIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-arrow-up-circle-fill me-1" viewBox="0 0 16 16" style="vertical-align: -0.125em;"><path d="M16 8A8 8 0 1 0 0 8a8 8 0 0 0 16 0m-7.5 3.5a.5.5 0 0 1-1 0V5.707L5.354 7.854a.5.5 0 1 1-.708-.708l3-3a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 5.707z"/></svg>`;
+                            versionIcon.innerHTML = '';
+                            versionIcon.className = 'd-none';
                         }
                     } else {
                         badge.classList.add('d-none');
@@ -432,7 +433,8 @@
                             versionBadge.title = 'Up to date';
                         }
                         if (versionIcon) {
-                            versionIcon.innerHTML = '✓ ';
+                            versionIcon.innerHTML = '✓';
+                            versionIcon.className = 'me-1';
                         }
                     }
                     if (data.latest && versionDisplay) {
