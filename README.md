@@ -6,11 +6,11 @@ While standard UPS notification scripts run locally and fail if your home intern
 
 Main Page:  
 
-<img width="1194" height="861" alt="image" src="https://github.com/user-attachments/assets/0ca0d1bc-3bc4-47e2-a34d-268f918acc49" />
+<img width="1197" height="873" alt="image" src="https://github.com/user-attachments/assets/08ca1b70-5477-480c-a6fd-f014c8dc9389" />
 
 History Logs:
 
-<img width="1512" height="552" alt="image" src="https://github.com/user-attachments/assets/40910b76-ec4e-47c6-a5b0-8bf754e03beb" />
+<img width="1518" height="594" alt="image" src="https://github.com/user-attachments/assets/49f032ab-3e8d-4d77-aecc-3f760b0e5471" />
 
 
 ## 🤔 Why multi-layer tracking? (Grid, UPS, & Network)
