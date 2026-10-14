@@ -6,7 +6,7 @@ While standard UPS notification scripts run locally and fail if your home intern
 
 Main Page:  
 
-<img width="1197" height="873" alt="image" src="https://github.com/user-attachments/assets/08ca1b70-5477-480c-a6fd-f014c8dc9389" />
+<img width="1203" height="870" alt="image" src="https://github.com/user-attachments/assets/9c3079e0-cc0f-43b1-b807-b3beba9a4611" />
 
 History Logs:
 
