@@ -107,6 +107,10 @@ def needs_fast_refresh():
             if "OB" in ups.get("status", ""):
                 return True
 
+    ha_mains = state.get("ha_mains", {})
+    if ha_mains.get("configured") and not ha_mains.get("online", True):
+        return True
+
     last_check = state.get("last_check") or ""
     return "Discover" in last_check or "Heal" in last_check
 
@@ -424,6 +428,11 @@ def load_config():
             cfg.setdefault("mqtt_password", "")
             cfg.setdefault("mqtt_topic_prefix", "outage_tracker")
             cfg.setdefault("mqtt_discovery_prefix", "homeassistant")
+            cfg.setdefault("ha_url", "")
+            cfg.setdefault("ha_token", "")
+            cfg.setdefault("ha_mains_entity", "")
+            cfg.setdefault("ha_mains_voltage", 120)
+            cfg.setdefault("ha_mains_threshold_w", 10)
             
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
@@ -456,7 +465,9 @@ def load_config():
         "home_public_ip": "", "cloudflare_radar_token": "",
         "watchdog_isp_override": "", "watchdog_isp_override_2": "",
         "mqtt_host": "", "mqtt_port": 1883, "mqtt_username": "", "mqtt_password": "",
-        "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant"
+        "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant",
+        "ha_url": "", "ha_token": "", "ha_mains_entity": "",
+        "ha_mains_voltage": 120, "ha_mains_threshold_w": 10
     }
     save_config(config)
     return config
@@ -557,6 +568,18 @@ state = {
     "snmp": {
         "1": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False},
         "2": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False}
+    },
+    "ha_mains": {
+        "configured": False,
+        "online": False,
+        "watts": None,
+        "amps": None,
+        "voltage": 120,
+        "unit": "W",
+        "last_check": None,
+        "error": None,
+        "alert_sent": False,
+        "down_time": None
     }
 }
 
@@ -658,6 +681,17 @@ def build_dashboard_snapshot():
             "radar_status": wd_state.get("radar_status"),
         }
 
+    ha_mains_snap = {
+        "configured": bool(state.get("ha_mains", {}).get("configured")),
+        "online": state.get("ha_mains", {}).get("online"),
+        "watts": state.get("ha_mains", {}).get("watts"),
+        "amps": state.get("ha_mains", {}).get("amps"),
+        "voltage": state.get("ha_mains", {}).get("voltage"),
+        "unit": state.get("ha_mains", {}).get("unit", "W"),
+        "last_check": state.get("ha_mains", {}).get("last_check"),
+        "error": state.get("ha_mains", {}).get("error"),
+    }
+
     snmp_devices = {}
     for s_id in ["1", "2"]:
         snmp_state = state["snmp"][s_id]
@@ -726,6 +760,7 @@ def build_dashboard_snapshot():
         "snmp": {
             "devices": snmp_devices,
         },
+        "ha_mains": ha_mains_snap,
     }
 
 def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
@@ -1026,6 +1061,181 @@ def api_update():
         "error": error
     })
 
+def get_ha_status(url, token):
+    if not url or not url.strip():
+        return "Not Configured"
+    url = url.strip().rstrip("/")
+    decrypted_token = decrypt_if_possible(token) if token else ""
+    if not decrypted_token:
+        return "Missing Token"
+    headers = {"Authorization": f"Bearer {decrypted_token}"}
+    try:
+        resp = requests.get(f"{url}/api/", headers=headers, timeout=4)
+        if resp.status_code == 200:
+            return "Connected"
+        elif resp.status_code in (401, 403):
+            return "Auth Error (Invalid Token)"
+        return f"HTTP {resp.status_code}"
+    except Exception as exc:
+        return "Offline / Unreachable"
+
+
+def poll_ha_mains():
+    while True:
+        url = app_config.get("ha_url", "").strip().rstrip("/")
+        raw_token = app_config.get("ha_token", "")
+        token = decrypt_if_possible(raw_token) if raw_token else ""
+        entity = app_config.get("ha_mains_entity", "").strip()
+        voltage = float(app_config.get("ha_mains_voltage", 120) or 120)
+        threshold_w = float(app_config.get("ha_mains_threshold_w", 10) if app_config.get("ha_mains_threshold_w") is not None else 10)
+
+        ha_state = state["ha_mains"]
+
+        if not url or not token or not entity:
+            ha_state["configured"] = False
+            ha_state["online"] = False
+            ha_state["watts"] = None
+            ha_state["amps"] = None
+            ha_state["last_check"] = None
+            ha_state["error"] = None
+            time.sleep(10)
+            continue
+
+        ha_state["configured"] = True
+        ha_state["voltage"] = voltage
+
+        headers = {"Authorization": f"Bearer {token}"}
+        endpoint = f"{url}/api/states/{entity}"
+        now_dt = datetime.now()
+        now_str = now_dt.strftime("%Y-%m-%d %I:%M %p")
+
+        try:
+            resp = requests.get(endpoint, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_val = data.get("state", "")
+                attrs = data.get("attributes", {})
+                unit = str(attrs.get("unit_of_measurement", "W")).strip()
+
+                try:
+                    val_float = float(raw_val)
+                    if unit.lower() in ("kw", "kilowatt", "kilowatts"):
+                        watts = round(val_float * 1000.0, 1)
+                    else:
+                        watts = round(val_float, 1)
+
+                    amps = round(watts / voltage, 2) if voltage > 0 else 0.0
+
+                    ha_state["watts"] = watts
+                    ha_state["amps"] = amps
+                    ha_state["unit"] = "W"
+                    ha_state["last_check"] = now_str
+                    ha_state["error"] = None
+
+                    is_online = (watts > threshold_w)
+
+                    if not is_online:
+                        if ha_state["online"] or ha_state["down_time"] is None:
+                            ha_state["down_time"] = now_dt
+                            hist = load_history()
+                            hist.setdefault("grid", [])
+                            hist["grid"].append({
+                                "time": now_str,
+                                "status": f"HOME MAINS OFFLINE ({watts} W <= {threshold_w} W threshold)"
+                            })
+                            save_history(hist)
+
+                        down_secs = (now_dt - ha_state["down_time"]).total_seconds()
+                        if down_secs >= 60 and not ha_state.get("alert_sent"):
+                            corr_note = " (Utility grid also reports outage!)" if state.get("is_outage") else " (Utility grid shows OK - possible local breaker/feed drop)"
+                            send_pushover("?? Home Mains Power Dropped", f"Home Mains draw dropped to {watts} W (Threshold: {threshold_w} W).{corr_note}", priority=1)
+                            ha_state["alert_sent"] = True
+                    else:
+                        if not ha_state["online"] and ha_state.get("down_time"):
+                            elapsed_mins = int((now_dt - ha_state["down_time"]).total_seconds() / 60)
+                            hist = load_history()
+                            hist.setdefault("grid", [])
+                            hist["grid"].append({
+                                "time": now_str,
+                                "status": f"HOME MAINS RESTORED ({watts} W, draw restored after {elapsed_mins} mins)"
+                            })
+                            save_history(hist)
+
+                            if ha_state.get("alert_sent"):
+                                send_pushover("? Home Mains Power Restored", f"Home Mains draw restored to {watts} W ({amps} A).\nDowntime: {elapsed_mins} mins.", priority=0)
+
+                        ha_state["down_time"] = None
+                        ha_state["alert_sent"] = False
+
+                    ha_state["online"] = is_online
+
+                except (ValueError, TypeError):
+                    ha_state["error"] = f"Invalid numeric state from {entity}: '{raw_val}'"
+                    ha_state["last_check"] = now_str
+            else:
+                ha_state["error"] = f"HA API HTTP {resp.status_code}"
+                ha_state["last_check"] = now_str
+        except Exception as exc:
+            ha_state["error"] = f"HA connection error: {exc}"
+            ha_state["last_check"] = now_str
+
+        interval = 30 if (not ha_state.get("online") or state.get("is_outage")) else 60
+        for _ in range(interval):
+            time.sleep(1)
+
+
+@app.route("/test-ha", methods=["POST"])
+@login_required
+def test_ha():
+    url = app_config.get("ha_url", "").strip().rstrip("/")
+    token_enc = app_config.get("ha_token", "")
+    token = decrypt_if_possible(token_enc) if token_enc else ""
+    entity = app_config.get("ha_mains_entity", "").strip()
+    voltage = float(app_config.get("ha_mains_voltage", 120) or 120)
+
+    if not url:
+        return jsonify({"status": "error", "message": "Home Assistant URL is not configured."}), 400
+    if not token:
+        return jsonify({"status": "error", "message": "Home Assistant Token is missing."}), 400
+
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        base_resp = requests.get(f"{url}/api/", headers=headers, timeout=5)
+        if base_resp.status_code != 200:
+            return jsonify({"status": "error", "message": f"HA API returned HTTP {base_resp.status_code}"}), 400
+
+        if entity:
+            ent_resp = requests.get(f"{url}/api/states/{entity}", headers=headers, timeout=5)
+            if ent_resp.status_code == 200:
+                ent_data = ent_resp.json()
+                raw_val = ent_data.get("state", "")
+                attrs = ent_data.get("attributes", {})
+                unit = str(attrs.get("unit_of_measurement", "W")).strip()
+                friendly = attrs.get("friendly_name", entity)
+                try:
+                    fval = float(raw_val)
+                    watts = round(fval * 1000.0, 1) if unit.lower() in ("kw", "kilowatt", "kilowatts") else round(fval, 1)
+                    amps = round(watts / voltage, 2) if voltage > 0 else 0.0
+                    return jsonify({
+                        "status": "success",
+                        "message": f"Connected! {friendly}: {watts} W ({amps} A @ {int(voltage)}V)"
+                    })
+                except Exception:
+                    return jsonify({
+                        "status": "success",
+                        "message": f"Connected to HA! Entity state: '{raw_val}' {unit} (non-numeric)"
+                    })
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Connected to HA, but entity '{entity}' returned HTTP {ent_resp.status_code}"
+                }), 400
+
+        return jsonify({"status": "success", "message": "Connected to Home Assistant API successfully!"})
+    except Exception as exc:
+        return jsonify({"status": "error", "message": f"Connection failed: {exc}"}), 500
+
+
 @app.route("/")
 @login_required
 def index():
@@ -1210,6 +1420,11 @@ def config_page():
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
             "ts_accept_routes": ts_accept_routes,
             "ts_update_check_interval_hours": get_int("ts_update_check_interval_hours", 24),
+            "ha_url": request.form.get("ha_url", "").strip(),
+            "ha_token": get_encrypted_secret("ha_token"),
+            "ha_mains_entity": request.form.get("ha_mains_entity", "").strip(),
+            "ha_mains_voltage": get_int("ha_mains_voltage", 120),
+            "ha_mains_threshold_w": get_int("ha_mains_threshold_w", 10),
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
@@ -1234,6 +1449,7 @@ def config_page():
         mqtt_last_published=state.get("mqtt_last_published"),
         mqtt_errors=mqtt_errors,
         tailscale_errors=tailscale_errors,
+        ha_status=get_ha_status(app_config.get("ha_url"), app_config.get("ha_token")),
     )
 
 @app.route("/test-pushover", methods=["POST"])
@@ -2002,4 +2218,5 @@ if __name__ == "__main__":
     threading.Thread(target=poll_snmp, daemon=True).start()
     threading.Thread(target=mqtt_heartbeat_loop, daemon=True).start()
     threading.Thread(target=tailscale_update_monitor_loop, daemon=True).start()
+    threading.Thread(target=poll_ha_mains, daemon=True).start()
     app.run(host="0.0.0.0", port=8080)

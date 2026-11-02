@@ -111,46 +111,107 @@
 
         <div class="row g-4 justify-content-center">
             
-            <!-- 1. Utility Card -->
+            <!-- 1. Utility & Home Mains Card -->
             <div class="{{ col_class }}">
                 <div class="card p-4 text-center h-100">
                     <h5 class="text-info">
-                        {% if config.company_name %}{{ config.company_name }} Area{% else %}Utility Area{% endif %}
-                        {% if config.zip_code %}(Zip: <strong>{{ config.zip_code }}</strong>){% endif %}
+                        {% if state.ha_mains and state.ha_mains.configured %}
+                            Power Status
+                        {% else %}
+                            {% if config.company_name %}{{ config.company_name }} Area{% else %}Utility Area{% endif %}
+                            {% if config.zip_code %}(Zip: <strong>{{ config.zip_code }}</strong>){% endif %}
+                        {% endif %}
                     </h5>
                     <hr>
                     
-                    {% if not config.kubra_url %}
-                        {% if state.last_check and "Discover" in state.last_check %}
-                            <h4 class="text-info mt-4">🔍 Analyzing Map Data</h4>
-                            <p class="text-muted">Scanning {{ config.map_url }} for the correct API endpoints...</p>
-                            <div class="spinner-border text-info mt-2" role="status"></div>
-                        {% elif state.discovery_failed %}
-                            <h4 class="text-danger mt-4">Discovery Failed</h4>
-                            <p class="text-muted">We couldn't automatically find the API. Please enter the Outage API JSON URL manually via Settings.</p>
-                        {% else %}
-                            <h4 class="text-warning mt-4">Awaiting Configuration</h4>
-                            <p class="text-muted">Enter a Map URL in settings to auto-discover your tracking API.</p>
+                    <div class="d-flex flex-column justify-content-center h-100">
+                        <!-- Top Section: Area Utility Grid -->
+                        <div class="mb-2">
+                            {% if state.ha_mains and state.ha_mains.configured %}
+                                <h6 class="text-muted text-uppercase mb-2">
+                                    {% if config.company_name %}{{ config.company_name }}{% else %}Utility Grid{% endif %}
+                                    {% if config.zip_code %}(Zip: {{ config.zip_code }}){% endif %}
+                                </h6>
+                            {% endif %}
+
+                            {% if not config.kubra_url %}
+                                {% if state.last_check and "Discover" in state.last_check %}
+                                    <h4 class="text-info mt-2">?? Analyzing Map Data</h4>
+                                    <p class="text-muted small">Scanning {{ config.map_url }} for API endpoints...</p>
+                                    <div class="spinner-border spinner-border-sm text-info mt-1" role="status"></div>
+                                {% elif state.discovery_failed %}
+                                    <h4 class="text-danger mt-2 fs-5">Discovery Failed</h4>
+                                    <p class="text-muted small">Enter Outage API URL manually via Settings.</p>
+                                {% else %}
+                                    <h4 class="text-warning mt-2 fs-5">Awaiting Configuration</h4>
+                                    <p class="text-muted small">Enter a Map URL in settings to auto-discover.</p>
+                                {% endif %}
+                            {% elif state.is_outage %}
+                                <h3 class="status-outage mb-1 fs-5">OUTAGE ACTIVE</h3>
+                                <p class="lead mb-1 fs-6"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
+                                <p class="small text-muted mb-1">Est. Restoration: <strong>{{ state.etr }}</strong></p>
+                                <p class="small text-muted mb-1">Duration: <strong>{{ duration }} mins</strong></p>
+                                {% if state.alert_sent %}
+                                    <span class="badge bg-danger p-1">Area Alert Sent</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark p-1">Alert triggers at {{ config.threshold_mins }} mins</span>
+                                {% endif %}
+                            {% else %}
+                                <h3 class="status-ok mb-1 fs-5">GRID ONLINE</h3>
+                                <p class="small text-muted mb-2">0 customers affected.</p>
+                                <span class="badge bg-success p-1">All Clear</span>
+                            {% endif %}
+
+                            <div class="text-muted small mt-2">
+                                Last Grid Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span>
+                                {% if state.error_msg %}<br><span class="text-danger small">Error: {{ state.error_msg }}</span>{% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Optional Bottom Section: Home Mains Watchdog (Horizontally Split) -->
+                        {% if state.ha_mains and state.ha_mains.configured %}
+                            <hr class="border-secondary my-2 w-75 mx-auto">
+                            
+                            <div class="mt-2">
+                                <h6 class="text-muted text-uppercase mb-2">Home Mains Watchdog</h6>
+                                
+                                {% if state.ha_mains.error %}
+                                    <h3 class="status-outage mb-1 fs-5">SENSOR UNREACHABLE</h3>
+                                    <p class="small text-danger mb-1">{{ state.ha_mains.error }}</p>
+                                {% elif state.ha_mains.watts is not none %}
+                                    {% if state.ha_mains.online %}
+                                        <h3 class="status-ok mb-1 fs-5">MAINS ONLINE</h3>
+                                        <div class="lead mb-1 fs-5 text-light fw-bold">
+                                            {{ "{:,.0f}".format(state.ha_mains.watts) }} W
+                                            <span class="badge bg-secondary bg-opacity-50 text-light border border-secondary fs-6 ms-1">{{ state.ha_mains.amps }} A</span>
+                                        </div>
+                                        <p class="small text-muted mb-1">Calculated at {{ config.ha_mains_voltage or 120 }}V nominal</p>
+                                        <span class="badge bg-success p-1">Normal Draw</span>
+                                    {% else %}
+                                        <h3 class="status-outage mb-1 fs-5">MAINS DROPPED</h3>
+                                        <div class="lead mb-1 fs-5 text-danger fw-bold">
+                                            {{ "{:,.0f}".format(state.ha_mains.watts) }} W
+                                            <span class="badge bg-danger bg-opacity-25 text-danger border border-danger fs-6 ms-1">{{ state.ha_mains.amps }} A</span>
+                                        </div>
+                                        <p class="small text-danger fw-bold mb-1">Below {{ config.ha_mains_threshold_w or 10 }} W threshold</p>
+                                        {% if state.is_outage %}
+                                            <div class="small text-warning mt-1">? Correlated with active utility grid outage</div>
+                                        {% else %}
+                                            <div class="small text-info mt-1">?? Utility grid shows OK (possible local breaker trip)</div>
+                                        {% endif %}
+                                    {% endif %}
+                                {% else %}
+                                    <p class="text-muted small">Awaiting initial sensor data...</p>
+                                {% endif %}
+
+                                <div class="text-muted small mt-2">
+                                    Last Mains Check: <span>{% if state.ha_mains.last_check %}{{ state.ha_mains.last_check }}{% else %}Pending...{% endif %}</span>
+                                    {% if config.ha_mains_entity %}
+                                        <br><span class="text-muted" style="font-size: 0.75rem;">Entity: {{ config.ha_mains_entity }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
                         {% endif %}
-                    {% elif state.is_outage %}
-                        <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
-                        <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
-                        <p class="mb-1">Est. Restoration: <strong>{{ state.etr }}</strong></p>
-                        <p>Duration: <strong>{{ duration }} minutes</strong></p>
-                        {% if state.alert_sent %}
-                            <span class="badge bg-danger p-2">Area Alert Sent</span>
-                        {% else %}
-                            <span class="badge bg-warning text-dark p-2">Alert triggers at {{ config.threshold_mins }} mins</span>
-                        {% endif %}
-                    {% else %}
-                        <h2 class="status-ok mt-2">POWER ONLINE</h2>
-                        <p class="lead mt-2">0 customers affected.</p>
-                        <span class="badge bg-success p-2">All Clear</span>
-                    {% endif %}
-                    
-                    <div class="mt-auto pt-4 text-muted small">
-                        Last API Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span><br>
-                        {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
                     </div>
                 </div>
             </div>

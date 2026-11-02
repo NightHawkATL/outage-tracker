@@ -228,6 +228,53 @@
                         </div>
                     </div>
 
+                    <!-- Home Mains Power Watchdog (Home Assistant) -->
+                    <div class="card p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-info mb-0">Home Mains Watchdog (Optional)</h4>
+                            <div>
+                                {% if ha_status == "Connected" %}
+                                    <span class="badge bg-success p-2">{{ ha_status }}</span>
+                                {% elif ha_status == "Not Configured" %}
+                                    <span class="badge bg-secondary p-2">{{ ha_status }}</span>
+                                {% else %}
+                                    <span class="badge bg-danger p-2">{{ ha_status }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <p class="small text-muted mb-3">Monitor real-time whole-home mains electrical draw (Watts & Amps) directly from a Home Assistant power entity (e.g. Emporia Vue, IoTaWatt, Shelly 3EM, Enphase, Solar/CT). When configured, this adds a horizontal split to the Power card on your dashboard.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Home Assistant URL</label>
+                                <input type="url" name="ha_url" id="haUrlInput" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_url }}" placeholder="http://homeassistant:8123 or http://100.x.x.x:8123">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Long-Lived Access Token</label>
+                                <input type="password" name="ha_token" id="haTokenInput" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ha_token %}???????? (Saved) - Type 'clear' to remove{% else %}From HA Profile -> Security{% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Mains Power Entity ID</label>
+                                <input type="text" name="ha_mains_entity" id="haMainsEntityInput" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_mains_entity }}" placeholder="sensor.home_mains_power">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Nominal Voltage</label>
+                                <input type="number" name="ha_mains_voltage" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_mains_voltage or 120 }}" placeholder="120">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Outage Threshold (W)</label>
+                                <input type="number" name="ha_mains_threshold_w" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_mains_threshold_w if config.ha_mains_threshold_w is not none else 10 }}" placeholder="10">
+                            </div>
+                            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                                <div class="small text-muted">
+                                    Status: <span id="haTestStatus" class="text-white">Ready</span>
+                                </div>
+                                <button type="button" id="haTestBtn" class="btn btn-outline-info btn-sm" onclick="testHomeAssistant()">
+                                    ?? Test HA Connection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- MQTT / Home Assistant -->
                     <div class="card p-4 h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -752,6 +799,38 @@
             const isV3 = versionEl && versionEl.value === '3';
             if (v2Block) v2Block.style.display = isV3 ? 'none' : '';
             if (v3Block) v3Block.style.display = isV3 ? '' : 'none';
+        }
+
+        function testHomeAssistant() {
+            const btn = document.getElementById('haTestBtn');
+            const statusEl = document.getElementById('haTestStatus');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "? Testing...";
+            statusEl.innerText = "Connecting to Home Assistant...";
+
+            fetch('/test-ha', { method: 'POST' })
+                .then(async response => {
+                    const data = await response.json();
+                    if (response.ok) {
+                        statusEl.innerText = data.message;
+                        statusEl.className = "text-success fw-bold";
+                        alert(data.message);
+                    } else {
+                        statusEl.innerText = data.message || "Connection failed";
+                        statusEl.className = "text-danger fw-bold";
+                        alert("Home Assistant Test Error: " + (data.message || "Failed"));
+                    }
+                })
+                .catch(err => {
+                    statusEl.innerText = "Error communicating with server.";
+                    statusEl.className = "text-danger fw-bold";
+                    alert("Error: " + err.message);
+                })
+                .finally(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
         }
 
         function checkPwd() {
