@@ -579,7 +579,8 @@ state = {
         "last_check": None,
         "error": None,
         "alert_sent": False,
-        "down_time": None
+        "down_time": None,
+        "low_since": None
     }
 }
 
@@ -720,9 +721,16 @@ def build_dashboard_snapshot():
         }
 
     overall_status = "ok"
+    ha_mains_state = state.get("ha_mains", {})
+    ha_mains_outage = (
+        ha_mains_state.get("configured")
+        and not ha_mains_state.get("error")
+        and ha_mains_state.get("watts") is not None
+        and ha_mains_state.get("online") is False
+    )
     if state.get("error_msg"):
         overall_status = "error"
-    elif state.get("is_outage") or ups_on_battery > 0:
+    elif state.get("is_outage") or ups_on_battery > 0 or ha_mains_outage:
         overall_status = "alert"
     elif any(item["online"] is False for item in watchdogs.values() if item["target"]) or any(
         item["online"] is False for item in snmp_devices.values() if item["ip"]
@@ -1098,6 +1106,9 @@ def poll_ha_mains():
             ha_state["amps"] = None
             ha_state["last_check"] = None
             ha_state["error"] = None
+            ha_state["down_time"] = None
+            ha_state["low_since"] = None
+            ha_state["alert_sent"] = False
             time.sleep(10)
             continue
 
@@ -1135,6 +1146,8 @@ def poll_ha_mains():
                     is_online = (watts > threshold_w)
 
                     if not is_online:
+                        if ha_state.get("low_since") is None:
+                            ha_state["low_since"] = now_dt
                         if ha_state["online"] or ha_state["down_time"] is None:
                             ha_state["down_time"] = now_dt
                             hist = load_history()
@@ -1145,7 +1158,7 @@ def poll_ha_mains():
                             })
                             save_history(hist)
 
-                        down_secs = (now_dt - ha_state["down_time"]).total_seconds()
+                        down_secs = (now_dt - ha_state["low_since"]).total_seconds()
                         if down_secs >= 60 and not ha_state.get("alert_sent"):
                             corr_note = " (Utility grid also reports outage!)" if state.get("is_outage") else " (Utility grid shows OK - possible local breaker/feed drop)"
                             send_pushover("?? Home Mains Power Dropped", f"Home Mains draw dropped to {watts} W (Threshold: {threshold_w} W).{corr_note}", priority=1)
@@ -1165,6 +1178,7 @@ def poll_ha_mains():
                                 send_pushover("? Home Mains Power Restored", f"Home Mains draw restored to {watts} W ({amps} A).\nDowntime: {elapsed_mins} mins.", priority=0)
 
                         ha_state["down_time"] = None
+                        ha_state["low_since"] = None
                         ha_state["alert_sent"] = False
 
                     ha_state["online"] = is_online
@@ -1172,12 +1186,15 @@ def poll_ha_mains():
                 except (ValueError, TypeError):
                     ha_state["error"] = f"Invalid numeric state from {entity}: '{raw_val}'"
                     ha_state["last_check"] = now_str
+                    ha_state["low_since"] = None
             else:
                 ha_state["error"] = f"HA API HTTP {resp.status_code}"
                 ha_state["last_check"] = now_str
+                ha_state["low_since"] = None
         except Exception as exc:
             ha_state["error"] = f"HA connection error: {exc}"
             ha_state["last_check"] = now_str
+            ha_state["low_since"] = None
 
         interval = 30 if (not ha_state.get("online") or state.get("is_outage")) else 60
         for _ in range(interval):
