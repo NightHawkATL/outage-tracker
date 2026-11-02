@@ -809,7 +809,18 @@
             btn.innerHTML = "? Testing...";
             statusEl.innerText = "Connecting to Home Assistant...";
 
-            fetch('/test-ha', { method: 'POST' })
+            const testData = {
+                ha_url: document.getElementById('haUrlInput').value.trim(),
+                ha_token: document.getElementById('haTokenInput').value,
+                ha_mains_entity: document.getElementById('haMainsEntityInput').value.trim(),
+                ha_mains_voltage: document.querySelector('[name="ha_mains_voltage"]').value
+            };
+
+            fetch('/test-ha', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(testData)
+            })
                 .then(async response => {
                     const data = await response.json();
                     if (response.ok) {
