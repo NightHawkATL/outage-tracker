@@ -1204,11 +1204,19 @@ def poll_ha_mains():
 @app.route("/test-ha", methods=["POST"])
 @login_required
 def test_ha():
-    url = app_config.get("ha_url", "").strip().rstrip("/")
+    test_data = request.get_json(silent=True)
+    if not isinstance(test_data, dict):
+        test_data = {}
+
+    url = str(test_data.get("ha_url", app_config.get("ha_url", "")) or "").strip().rstrip("/")
+    submitted_token = str(test_data.get("ha_token", "") or "").strip()
     token_enc = app_config.get("ha_token", "")
-    token = decrypt_if_possible(token_enc) if token_enc else ""
-    entity = app_config.get("ha_mains_entity", "").strip()
-    voltage = float(app_config.get("ha_mains_voltage", 120) or 120)
+    token = submitted_token or (decrypt_if_possible(token_enc) if token_enc else "")
+    entity = str(test_data.get("ha_mains_entity", app_config.get("ha_mains_entity", "")) or "").strip()
+    try:
+        voltage = float(test_data.get("ha_mains_voltage", app_config.get("ha_mains_voltage", 120)) or 120)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Nominal voltage must be numeric."}), 400
 
     if not url:
         return jsonify({"status": "error", "message": "Home Assistant URL is not configured."}), 400
