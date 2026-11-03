@@ -234,8 +234,13 @@
                         {% for ups_name, ups_info in state.ups_data.items() %}
                             <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h5 class="mb-0 text-info">{{ ups_name }}</h5>
-                                    {% if "OB" in ups_info.status %}
+                                    <div>
+                                        <h5 class="mb-0 text-info">{{ ups_info.name or ups_name }}</h5>
+                                        {% if ups_info.source %}<div class="small text-muted">{{ ups_info.source }}</div>{% endif %}
+                                    </div>
+                                    {% if ups_info.online is defined and not ups_info.online %}
+                                        <span class="badge bg-warning text-dark fs-6">STALE</span>
+                                    {% elif "OB" in ups_info.status %}
                                         <span class="badge bg-danger fs-6">ON BATTERY</span>
                                     {% elif "OL" in ups_info.status %}
                                         <span class="badge bg-success fs-6">ONLINE</span>
@@ -246,6 +251,9 @@
                                 <div class="small">
                                     Battery: <strong>{{ ups_info.charge }}%</strong> &nbsp;|&nbsp; 
                                     Est. Runtime: <strong>{{ ups_info.runtime_mins }} mins</strong>
+                                    {% if ups_info.online is defined and not ups_info.online %}
+                                        <div class="text-warning mt-1">Last successful poll: {{ ups_info.last_check or 'Unknown' }}</div>
+                                    {% endif %}
                                 </div>
                             </div>
                         {% endfor %}
