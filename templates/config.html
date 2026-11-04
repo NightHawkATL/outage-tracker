@@ -286,7 +286,10 @@
                                             ⚠️ {{ mqtt_errors|length }} Error{% if mqtt_errors|length > 1 %}s{% endif %}
                                         </span>
                                         <div class="error-history-popover p-3 rounded shadow">
-                                            <h6 class="text-danger fw-bold mb-2 pb-1 border-bottom border-secondary small">Recent MQTT Failures (Last 5)</h6>
+                                            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-secondary">
+                                                <h6 class="text-danger fw-bold mb-0 small">Recent MQTT Failures (Last 5)</h6>
+                                                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="clearServiceErrors('mqtt', this)">Clear</button>
+                                            </div>
                                             <div class="d-flex flex-column gap-2 small">
                                                 {% for err in mqtt_errors %}
                                                     <div class="p-2 rounded bg-dark border border-secondary">
@@ -360,7 +363,10 @@
                                             ⚠️ {{ tailscale_errors|length }} Error{% if tailscale_errors|length > 1 %}s{% endif %}
                                         </span>
                                         <div class="error-history-popover p-3 rounded shadow">
-                                            <h6 class="text-danger fw-bold mb-2 pb-1 border-bottom border-secondary small">Recent Tailscale Errors (Last 5)</h6>
+                                            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-secondary">
+                                                <h6 class="text-danger fw-bold mb-0 small">Recent Tailscale Errors (Last 5)</h6>
+                                                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="clearServiceErrors('tailscale', this)">Clear</button>
+                                            </div>
                                             <div class="d-flex flex-column gap-2 small">
                                                 {% for err in tailscale_errors %}
                                                     <div class="p-2 rounded bg-dark border border-secondary">
@@ -787,6 +793,25 @@
                 .catch(() => {
                     alert("Error communicating with server.");
                     btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+        }
+
+        function clearServiceErrors(service, btn) {
+            btn.disabled = true;
+            fetch('/service-errors/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ service })
+            })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok) throw new Error(data.message || 'Failed to clear errors.');
+                    const dropdown = btn.closest('.error-history-dropdown');
+                    if (dropdown) dropdown.remove();
+                })
+                .catch(error => {
+                    alert(error.message);
                     btn.disabled = false;
                 });
         }
