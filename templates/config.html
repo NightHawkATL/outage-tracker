@@ -250,7 +250,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Long-Lived Access Token</label>
-                                <input type="password" name="ha_token" id="haTokenInput" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ha_token %}???????? (Saved) - Type 'clear' to remove{% else %}From HA Profile -> Security{% endif %}">
+                                <input type="password" name="ha_token" id="haTokenInput" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ha_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}From HA Profile -> Security{% endif %}">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Mains Power Entity ID</label>
@@ -269,7 +269,7 @@
                                     Status: <span id="haTestStatus" class="text-white">Ready</span>
                                 </div>
                                 <button type="button" id="haTestBtn" class="btn btn-outline-info btn-sm" onclick="testHomeAssistant()">
-                                    ?? Test HA Connection
+                                    🔍 Test HA Connection
                                 </button>
                             </div>
                         </div>
@@ -831,7 +831,7 @@
             const statusEl = document.getElementById('haTestStatus');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = "? Testing...";
+            btn.innerHTML = "⏳ Testing...";
             statusEl.innerText = "Connecting to Home Assistant...";
 
             const testData = {

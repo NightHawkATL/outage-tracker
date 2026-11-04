@@ -1184,7 +1184,7 @@ def poll_ha_mains():
                         down_secs = (now_dt - ha_state["low_since"]).total_seconds()
                         if down_secs >= 60 and not ha_state.get("alert_sent"):
                             corr_note = " (Utility grid also reports outage!)" if state.get("is_outage") else " (Utility grid shows OK - possible local breaker/feed drop)"
-                            send_pushover("?? Home Mains Power Dropped", f"Home Mains draw dropped to {watts} W (Threshold: {threshold_w} W).{corr_note}", priority=1)
+                            send_pushover("⚠️ Home Mains Power Dropped", f"Home Mains draw dropped to {watts} W (Threshold: {threshold_w} W).{corr_note}", priority=1)
                             ha_state["alert_sent"] = True
                     else:
                         if not ha_state["online"] and ha_state.get("down_time"):
@@ -1198,7 +1198,7 @@ def poll_ha_mains():
                             save_history(hist)
 
                             if ha_state.get("alert_sent"):
-                                send_pushover("? Home Mains Power Restored", f"Home Mains draw restored to {watts} W ({amps} A).\nDowntime: {elapsed_mins} mins.", priority=0)
+                                send_pushover("✅ Home Mains Power Restored", f"Home Mains draw restored to {watts} W ({amps} A).\nDowntime: {elapsed_mins} mins.", priority=0)
 
                         ha_state["down_time"] = None
                         ha_state["low_since"] = None
