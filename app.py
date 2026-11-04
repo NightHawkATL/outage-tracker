@@ -1507,6 +1507,17 @@ def test_pushover():
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
 
+@app.route("/service-errors/clear", methods=["POST"])
+@login_required
+def clear_service_errors_route():
+    service = request.form.get("service", "")
+    if service not in ("mqtt", "tailscale"):
+        return jsonify({"status": "error", "message": "Unknown service."}), 400
+    hist = load_history()
+    hist[f"{service}_errors"] = []
+    save_history(hist)
+    return jsonify({"status": "success"})
+
 @app.route("/mqtt/republish", methods=["POST"])
 @login_required
 def mqtt_republish_route():
