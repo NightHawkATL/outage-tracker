@@ -41,11 +41,40 @@
     {% endif %}
 
     <div class="container" style="max-width: {{ container_width }};">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="mb-0 d-flex align-items-center">
-                <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
-                Tracker Config
-            </h2>
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+            <div>
+                <h2 class="mb-1 d-flex align-items-center">
+                    <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
+                    Tracker Config
+                </h2>
+                <div class="d-flex align-items-center flex-wrap gap-2 ms-1 small">
+                    <a href="https://github.com/NightHawkATL/outage-tracker" target="_blank" class="text-decoration-none text-muted d-inline-flex align-items-center me-2" title="GitHub Repository">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-github me-1" viewBox="0 0 16 16">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                        GitHub
+                    </a>
+                    <a href="https://github.com/NightHawkATL/outage-tracker" target="_blank" class="badge text-bg-dark border border-secondary text-decoration-none d-inline-flex align-items-center" title="Star on GitHub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="#ffc107" class="bi bi-star-fill me-1" viewBox="0 0 16 16">
+                            <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+                        </svg>
+                        Star
+                    </a>
+                    <a href="https://github.com/NightHawkATL/outage-tracker/subscription" target="_blank" class="badge text-bg-dark border border-secondary text-decoration-none d-inline-flex align-items-center" title="Watch on GitHub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-eye-fill me-1" viewBox="0 0 16 16">
+                            <path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0"/>
+                            <path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8m8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7"/>
+                        </svg>
+                        Watch
+                    </a>
+                    <a href="https://hub.docker.com/r/nighthawkatl/outage-tracker" target="_blank" class="badge text-bg-dark border border-secondary text-decoration-none d-inline-flex align-items-center" title="Star on Docker Hub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="#0db7ed" class="bi bi-star-fill me-1" viewBox="0 0 16 16">
+                            <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+                        </svg>
+                        Docker Hub
+                    </a>
+                </div>
+            </div>
             <div>
                 <a href="/" class="btn btn-outline-light me-2">🏠 Dashboard</a>
                 <a href="/history" class="btn btn-outline-info me-2">📜 History</a>
@@ -199,6 +228,53 @@
                         </div>
                     </div>
 
+                    <!-- Home Mains Power Watchdog (Home Assistant) -->
+                    <div class="card p-4 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="text-info mb-0">Home Mains Watchdog (Optional)</h4>
+                            <div>
+                                {% if ha_status == "Connected" %}
+                                    <span class="badge bg-success p-2">{{ ha_status }}</span>
+                                {% elif ha_status == "Not Configured" %}
+                                    <span class="badge bg-secondary p-2">{{ ha_status }}</span>
+                                {% else %}
+                                    <span class="badge bg-danger p-2">{{ ha_status }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <p class="small text-muted mb-3">Monitor real-time whole-home mains electrical draw (Watts & Amps) directly from a Home Assistant power entity (e.g. Emporia Vue, IoTaWatt, Shelly 3EM, Enphase, Solar/CT). When configured, this adds a horizontal split to the Power card on your dashboard.</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Home Assistant URL</label>
+                                <input type="url" name="ha_url" id="haUrlInput" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_url }}" placeholder="http://homeassistant:8123 or http://100.x.x.x:8123">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Long-Lived Access Token</label>
+                                <input type="password" name="ha_token" id="haTokenInput" class="form-control bg-dark text-white border-secondary" value="" placeholder="{% if config.ha_token %}•••••••• (Saved) - Type 'clear' to remove{% else %}From HA Profile -> Security{% endif %}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Mains Power Entity ID</label>
+                                <input type="text" name="ha_mains_entity" id="haMainsEntityInput" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_mains_entity }}" placeholder="sensor.home_mains_power">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Nominal Voltage</label>
+                                <input type="number" name="ha_mains_voltage" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_mains_voltage or 120 }}" placeholder="120">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Outage Threshold (W)</label>
+                                <input type="number" name="ha_mains_threshold_w" class="form-control bg-dark text-white border-secondary" value="{{ config.ha_mains_threshold_w if config.ha_mains_threshold_w is not none else 10 }}" placeholder="10">
+                            </div>
+                            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+                                <div class="small text-muted">
+                                    Status: <span id="haTestStatus" class="text-white">Ready</span>
+                                </div>
+                                <button type="button" id="haTestBtn" class="btn btn-outline-info btn-sm" onclick="testHomeAssistant()">
+                                    🔍 Test HA Connection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- MQTT / Home Assistant -->
                     <div class="card p-4 h-100">
                         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -210,7 +286,10 @@
                                             ⚠️ {{ mqtt_errors|length }} Error{% if mqtt_errors|length > 1 %}s{% endif %}
                                         </span>
                                         <div class="error-history-popover p-3 rounded shadow">
-                                            <h6 class="text-danger fw-bold mb-2 pb-1 border-bottom border-secondary small">Recent MQTT Failures (Last 5)</h6>
+                                            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-secondary">
+                                                <h6 class="text-danger fw-bold mb-0 small">Recent MQTT Failures (Last 5)</h6>
+                                                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="clearServiceErrors('mqtt', this)">Clear</button>
+                                            </div>
                                             <div class="d-flex flex-column gap-2 small">
                                                 {% for err in mqtt_errors %}
                                                     <div class="p-2 rounded bg-dark border border-secondary">
@@ -284,7 +363,10 @@
                                             ⚠️ {{ tailscale_errors|length }} Error{% if tailscale_errors|length > 1 %}s{% endif %}
                                         </span>
                                         <div class="error-history-popover p-3 rounded shadow">
-                                            <h6 class="text-danger fw-bold mb-2 pb-1 border-bottom border-secondary small">Recent Tailscale Errors (Last 5)</h6>
+                                            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-secondary">
+                                                <h6 class="text-danger fw-bold mb-0 small">Recent Tailscale Errors (Last 5)</h6>
+                                                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" onclick="clearServiceErrors('tailscale', this)">Clear</button>
+                                            </div>
                                             <div class="d-flex flex-column gap-2 small">
                                                 {% for err in tailscale_errors %}
                                                     <div class="p-2 rounded bg-dark border border-secondary">
@@ -336,10 +418,10 @@
                                 {% endif %}
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="button" id="tsCheckBtn" class="btn btn-outline-secondary btn-sm" onclick="checkTailscaleUpdate()">
+                                <button type="button" id="tsCheckBtn" class="btn btn-outline-light btn-sm" onclick="checkTailscaleUpdate()" title="Check for Tailscale updates">
                                     🔍 Check Now
                                 </button>
-                                <button type="button" id="tsUpdateBtn" class="btn btn-outline-info btn-sm" onclick="updateTailscale()" {% if not ts_update.apk_update_available %}disabled{% endif %}>
+                                <button type="button" id="tsUpdateBtn" class="btn {% if ts_update.apk_update_available %}btn-outline-info{% else %}btn-outline-secondary{% endif %} btn-sm" onclick="updateTailscale()" {% if not ts_update.apk_update_available %}disabled title="{% if ts_update.update_available %}Alpine package not yet available{% else %}Tailscale is up to date{% endif %}"{% endif %}>
                                     🔄 Update Tailscale
                                 </button>
                             </div>
@@ -621,13 +703,8 @@
 
         <!-- Footer -->
         <div class="row pb-4">
-            <div class="col-12 text-center">
-                <a href="https://github.com/NightHawkATL/outage-tracker" target="_blank" class="text-muted text-decoration-none small">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-github" viewBox="0 0 16 16" style="vertical-align: -0.125em; margin-right: 4px;">
-                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-                    </svg>
-                    Outage Tracker on GitHub
-                </a>
+            <div class="col-12 text-center text-muted small">
+                Outage Tracker
             </div>
         </div>
 
@@ -720,6 +797,25 @@
                 });
         }
 
+        function clearServiceErrors(service, btn) {
+            btn.disabled = true;
+            fetch('/service-errors/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ service })
+            })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (!ok) throw new Error(data.message || 'Failed to clear errors.');
+                    const dropdown = btn.closest('.error-history-dropdown');
+                    if (dropdown) dropdown.remove();
+                })
+                .catch(error => {
+                    alert(error.message);
+                    btn.disabled = false;
+                });
+        }
+
         function toggleSnmpVersion(suffix) {
             const versionEl = document.getElementById(`snmp_version${suffix}`);
             const primary = suffix === '';
@@ -728,6 +824,49 @@
             const isV3 = versionEl && versionEl.value === '3';
             if (v2Block) v2Block.style.display = isV3 ? 'none' : '';
             if (v3Block) v3Block.style.display = isV3 ? '' : 'none';
+        }
+
+        function testHomeAssistant() {
+            const btn = document.getElementById('haTestBtn');
+            const statusEl = document.getElementById('haTestStatus');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = "⏳ Testing...";
+            statusEl.innerText = "Connecting to Home Assistant...";
+
+            const testData = {
+                ha_url: document.getElementById('haUrlInput').value.trim(),
+                ha_token: document.getElementById('haTokenInput').value,
+                ha_mains_entity: document.getElementById('haMainsEntityInput').value.trim(),
+                ha_mains_voltage: document.querySelector('[name="ha_mains_voltage"]').value
+            };
+
+            fetch('/test-ha', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(testData)
+            })
+                .then(async response => {
+                    const data = await response.json();
+                    if (response.ok) {
+                        statusEl.innerText = data.message;
+                        statusEl.className = "text-success fw-bold";
+                        alert(data.message);
+                    } else {
+                        statusEl.innerText = data.message || "Connection failed";
+                        statusEl.className = "text-danger fw-bold";
+                        alert("Home Assistant Test Error: " + (data.message || "Failed"));
+                    }
+                })
+                .catch(err => {
+                    statusEl.innerText = "Error communicating with server.";
+                    statusEl.className = "text-danger fw-bold";
+                    alert("Error: " + err.message);
+                })
+                .finally(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
         }
 
         function checkPwd() {

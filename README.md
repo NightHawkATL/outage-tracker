@@ -6,11 +6,11 @@ While standard UPS notification scripts run locally and fail if your home intern
 
 Main Page:  
 
-<img width="1194" height="861" alt="image" src="https://github.com/user-attachments/assets/0ca0d1bc-3bc4-47e2-a34d-268f918acc49" />
+<img width="1203" height="870" alt="image" src="https://github.com/user-attachments/assets/9c3079e0-cc0f-43b1-b807-b3beba9a4611" />
 
 History Logs:
 
-<img width="1512" height="552" alt="image" src="https://github.com/user-attachments/assets/40910b76-ec4e-47c6-a5b0-8bf754e03beb" />
+<img width="1518" height="594" alt="image" src="https://github.com/user-attachments/assets/49f032ab-3e8d-4d77-aecc-3f760b0e5471" />
 
 
 ## 🤔 Why multi-layer tracking? (Grid, UPS, & Network)
@@ -26,7 +26,8 @@ If you already have a UPS, why do you need to poll the power company and your in
 
 * **Grid Monitoring (KUBRA API):** Natively supports tracking any major utility company that uses the KUBRA Storm Center platform (Georgia Power, Duke Energy, Alabama Power, FirstEnergy, Entergy) as well as Pacific Power.
 * **Auto-Discovery & Auto-Heal:** Simply provide the main outage map URL, and the app will automatically hunt down the hidden JSON APIs in the background. If the utility company rotates their URLs (which KUBRA does periodically), the app detects the `404` failure and instantly auto-heals its own configuration without you lifting a finger!
-* **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack.
+* **Multi-UPS Array Support:** Connects to your local NUT server. Use the `auto` setting to automatically discover and independently track every UPS in your server rack. If a NUT server becomes unreachable, its devices are labeled **STALE** with their last known readings and last successful poll time instead of appearing online.
+* **Home Mains Watchdog:** Reads a whole-home power sensor from Home Assistant to show live Watts and Amps and detect when your house itself loses power, even when the utility reports no outage in your area.
 * **Dual-WAN Watchdog:** Continuously pings up to two IP addresses (like your home Public IP or a Tailscale node) to monitor your home internet connection for downtime, with independent alerting.
 * **SNMP Monitoring:** Poll up to two SNMP devices using SNMPv2c or SNMPv3 with configurable host, port, and OID values. This also works for cloud SNMP targets (including Meraki-reachable monitoring endpoints). You will be alerted when the tracked uptime OID decreases, mathematically proving a reboot or power event.
 * **MQTT / Home Assistant Export:** Publish the exact live status from the main dashboard into Home Assistant over MQTT, including grid outage state, UPS runtime, watchdog health, and SNMP device status with automatic Home Assistant discovery. The backend also republishes a retained heartbeat automatically every 5 minutes when idle and every 30 seconds during active events so Home Assistant sensors do not go stale.
@@ -133,6 +134,24 @@ The app will instantly scan the website in the background, bypass any iframes, l
 ### 3. Local UPS Settings (Optional)
 If you run a local NUT server, enter its IP and Port. 
 * Set **UPS Names** to `auto` to automatically fetch every UPS attached to the server, or list them manually (e.g., `nutdev1,nutdev2`).
+* If a server stops responding, its UPS cards switch to **STALE** and show the source server and the time of the last successful poll. Stale readings never trigger low-battery alerts or the fast refresh, and the error is also reported in the MQTT overall status.
+
+### 3a. Home Mains Watchdog (Optional)
+The utility API only tells you what your neighborhood is doing. The Home Mains Watchdog tells you whether *your* house has power by reading a whole-home power sensor from Home Assistant, such as an Emporia Vue, IoTaWatt, Shelly 3EM, or Enphase entity.
+
+1. In Home Assistant, open your profile, go to **Security**, and create a **Long-Lived Access Token**.
+2. In **Settings**, fill in the **Home Assistant URL** (for example `http://100.x.x.x:8123` over Tailscale), the **Long-Lived Access Token**, and the **Mains Power Entity ID** (for example `sensor.home_mains_power`).
+3. Set the **Nominal Voltage** (default `120`) used to calculate Amps, and the **Outage Threshold** in Watts (default `10`).
+4. Click **Test HA Connection**. It tests the values currently in the form, so you do not need to save first. A blank token field uses the saved token.
+
+How it behaves:
+* The feature is off and hidden until the URL, token, and entity are all filled in.
+* Entities reporting in `W` or `kW` are both supported; values are normalized to Watts, and Amps are calculated as Watts divided by the nominal voltage.
+* When configured, the Power card on the dashboard splits into the utility grid on top and the Home Mains Watchdog below, with live Watts and Amps.
+* If the draw stays at or below the threshold for 60 seconds, a Pushover alert is sent. It notes whether the utility grid also reports an outage, which helps distinguish a neighborhood blackout from a tripped main breaker or service-feed problem.
+* A sensor or connection error is shown as unreachable and does not count toward the 60 seconds, so a Home Assistant hiccup will not cause a false alert.
+* Drops and restorations are logged in the Grid history, and a confirmed mains drop sets the MQTT overall status to alert.
+* Only a Home Assistant URL and token are needed. No custom integration or add-on is required, because the app uses Home Assistant's built-in REST API.
 
 ### 4. Home Network Watchdog (Optional)
 Continuously ping up to two devices to detect ISP or local network failures. You can enter your home's Public IP, a Dynamic DNS hostname, or a secure Tailscale IP (e.g., `100.x.x.x`). 
@@ -211,6 +230,21 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 > **Message:**   
 > Back on grid power.
 
+### 🏠 Home Mains Events
+
+**Home Mains Power Dropped** (Priority 1 - High)
+*Triggered when your whole-home draw stays at or below the configured threshold for at least 60 seconds. The message states whether the utility grid also reports an outage.*
+> **Title:** ⚠️ Home Mains Power Dropped  
+> **Message:**   
+> Home Mains draw dropped to 0.0 W (Threshold: 10.0 W). (Utility grid shows OK - possible local breaker/feed drop)
+
+**Home Mains Power Restored** (Priority 0 - Normal)
+*Triggered when the draw rises above the threshold after an alert was sent.*
+> **Title:** ✅ Home Mains Power Restored  
+> **Message:**   
+> Home Mains draw restored to 2726.0 W (22.72 A).  
+> Downtime: 12 mins.
+
 ### 🌐 Watchdog Events
 
 **Network Offline** (Priority 1 - High)
@@ -239,7 +273,7 @@ Depending on your configuration and the events that occur, Outage Tracker will p
 > Configuration working perfectly. Here is your map!  
 > **Attachment:** 🗺️ *(Your generated Mapbox image)*
 
-> **A Note on Priorities:** Active Grid Outages, Critical UPS alerts, and Network Offline alerts are sent as **Priority 1**. In Pushover, this means the notification will play a sound and vibrate your phone **even if your phone is set to "Quiet Hours"**. The "Restored" and "Test" messages are sent as **Priority 0**, meaning they will deliver normally and won't wake you up in the middle of the night just to tell you the power came back on!
+> **A Note on Priorities:** Active Grid Outages, Critical UPS alerts, Home Mains drops, and Network Offline alerts are sent as **Priority 1**. In Pushover, this means the notification will play a sound and vibrate your phone **even if your phone is set to "Quiet Hours"**. The "Restored" and "Test" messages are sent as **Priority 0**, meaning they will deliver normally and won't wake you up in the middle of the night just to tell you the power came back on!
 
 ---
 

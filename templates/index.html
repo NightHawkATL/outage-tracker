@@ -53,10 +53,44 @@
     <div class="container" style="max-width: {{ container_width }};">
         
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
-            <h2 class="mb-0 d-flex align-items-center fs-3">
-                <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
-                <span class="d-none d-sm-inline">Outage Tracker</span> <span class="badge bg-secondary ms-2 fs-6">{{ app_version }}</span>
-            </h2>
+            <div>
+                <h2 class="mb-1 d-flex align-items-center fs-3">
+                    <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="height: 40px; margin-right: 12px;">
+                    <span class="d-none d-sm-inline">Outage Tracker</span> 
+                    <a id="versionLink" href="https://github.com/NightHawkATL/outage-tracker/releases" target="_blank" class="text-decoration-none">
+                        <span id="versionBadge" class="badge ms-2 fs-6 bg-success" style="vertical-align: middle;" title="Up to date">
+                            <span id="versionIcon" class="me-1">✓</span><span id="versionText">{{ app_version }}</span>
+                        </span>
+                    </a>
+                </h2>
+                <div class="d-flex align-items-center flex-wrap gap-2 ms-1 small">
+                    <a href="https://github.com/NightHawkATL/outage-tracker" target="_blank" class="text-decoration-none text-muted d-inline-flex align-items-center me-2" title="GitHub Repository">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-github me-1" viewBox="0 0 16 16">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                        GitHub
+                    </a>
+                    <a href="https://github.com/NightHawkATL/outage-tracker" target="_blank" class="badge text-bg-dark border border-secondary text-decoration-none d-inline-flex align-items-center" title="Star on GitHub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="#ffc107" class="bi bi-star-fill me-1" viewBox="0 0 16 16">
+                            <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+                        </svg>
+                        Star
+                    </a>
+                    <a href="https://github.com/NightHawkATL/outage-tracker/subscription" target="_blank" class="badge text-bg-dark border border-secondary text-decoration-none d-inline-flex align-items-center" title="Watch on GitHub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-eye-fill me-1" viewBox="0 0 16 16">
+                            <path d="M10.5 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0"/>
+                            <path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8m8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7"/>
+                        </svg>
+                        Watch
+                    </a>
+                    <a href="https://hub.docker.com/r/nighthawkatl/outage-tracker" target="_blank" class="badge text-bg-dark border border-secondary text-decoration-none d-inline-flex align-items-center" title="Star on Docker Hub">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="#0db7ed" class="bi bi-star-fill me-1" viewBox="0 0 16 16">
+                            <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+                        </svg>
+                        Docker Hub
+                    </a>
+                </div>
+            </div>
             
             {% if config.ts_authkey %}
                 <div>
@@ -77,46 +111,107 @@
 
         <div class="row g-4 justify-content-center">
             
-            <!-- 1. Utility Card -->
+            <!-- 1. Utility & Home Mains Card -->
             <div class="{{ col_class }}">
                 <div class="card p-4 text-center h-100">
                     <h5 class="text-info">
-                        {% if config.company_name %}{{ config.company_name }} Area{% else %}Utility Area{% endif %}
-                        {% if config.zip_code %}(Zip: <strong>{{ config.zip_code }}</strong>){% endif %}
+                        {% if state.ha_mains and state.ha_mains.configured %}
+                            Power Status
+                        {% else %}
+                            {% if config.company_name %}{{ config.company_name }} Area{% else %}Utility Area{% endif %}
+                            {% if config.zip_code %}(Zip: <strong>{{ config.zip_code }}</strong>){% endif %}
+                        {% endif %}
                     </h5>
                     <hr>
                     
-                    {% if not config.kubra_url %}
-                        {% if state.last_check and "Discover" in state.last_check %}
-                            <h4 class="text-info mt-4">🔍 Analyzing Map Data</h4>
-                            <p class="text-muted">Scanning {{ config.map_url }} for the correct API endpoints...</p>
-                            <div class="spinner-border text-info mt-2" role="status"></div>
-                        {% elif state.discovery_failed %}
-                            <h4 class="text-danger mt-4">Discovery Failed</h4>
-                            <p class="text-muted">We couldn't automatically find the API. Please enter the Outage API JSON URL manually via Settings.</p>
-                        {% else %}
-                            <h4 class="text-warning mt-4">Awaiting Configuration</h4>
-                            <p class="text-muted">Enter a Map URL in settings to auto-discover your tracking API.</p>
+                    <div class="d-flex flex-column justify-content-center h-100">
+                        <!-- Top Section: Area Utility Grid -->
+                        <div class="mb-2">
+                            {% if state.ha_mains and state.ha_mains.configured %}
+                                <h6 class="text-muted text-uppercase mb-2">
+                                    {% if config.company_name %}{{ config.company_name }}{% else %}Utility Grid{% endif %}
+                                    {% if config.zip_code %}(Zip: {{ config.zip_code }}){% endif %}
+                                </h6>
+                            {% endif %}
+
+                            {% if not config.kubra_url %}
+                                {% if state.last_check and "Discover" in state.last_check %}
+                                    <h4 class="text-info mt-2">🔍 Analyzing Map Data</h4>
+                                    <p class="text-muted small">Scanning {{ config.map_url }} for API endpoints...</p>
+                                    <div class="spinner-border spinner-border-sm text-info mt-1" role="status"></div>
+                                {% elif state.discovery_failed %}
+                                    <h4 class="text-danger mt-2 fs-5">Discovery Failed</h4>
+                                    <p class="text-muted small">Enter Outage API URL manually via Settings.</p>
+                                {% else %}
+                                    <h4 class="text-warning mt-2 fs-5">Awaiting Configuration</h4>
+                                    <p class="text-muted small">Enter a Map URL in settings to auto-discover.</p>
+                                {% endif %}
+                            {% elif state.is_outage %}
+                                <h3 class="status-outage mb-1 fs-5">OUTAGE ACTIVE</h3>
+                                <p class="lead mb-1 fs-6"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
+                                <p class="small text-muted mb-1">Est. Restoration: <strong>{{ state.etr }}</strong></p>
+                                <p class="small text-muted mb-1">Duration: <strong>{{ duration }} mins</strong></p>
+                                {% if state.alert_sent %}
+                                    <span class="badge bg-danger p-1">Area Alert Sent</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark p-1">Alert triggers at {{ config.threshold_mins }} mins</span>
+                                {% endif %}
+                            {% else %}
+                                <h3 class="status-ok mb-1 fs-5">GRID ONLINE</h3>
+                                <p class="small text-muted mb-2">0 customers affected.</p>
+                                <span class="badge bg-success p-1">All Clear</span>
+                            {% endif %}
+
+                            <div class="text-muted small mt-2">
+                                Last Grid Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span>
+                                {% if state.error_msg %}<br><span class="text-danger small">Error: {{ state.error_msg }}</span>{% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Optional Bottom Section: Home Mains Watchdog (Horizontally Split) -->
+                        {% if state.ha_mains and state.ha_mains.configured %}
+                            <hr class="border-secondary my-2 w-75 mx-auto">
+                            
+                            <div class="mt-2">
+                                <h6 class="text-muted text-uppercase mb-2">Home Mains Watchdog</h6>
+                                
+                                {% if state.ha_mains.error %}
+                                    <h3 class="status-outage mb-1 fs-5">SENSOR UNREACHABLE</h3>
+                                    <p class="small text-danger mb-1">{{ state.ha_mains.error }}</p>
+                                {% elif state.ha_mains.watts is not none %}
+                                    {% if state.ha_mains.online %}
+                                        <h3 class="status-ok mb-1 fs-5">MAINS ONLINE</h3>
+                                        <div class="lead mb-1 fs-5 text-light fw-bold">
+                                            {{ "{:,.0f}".format(state.ha_mains.watts) }} W
+                                            <span class="badge bg-secondary bg-opacity-50 text-light border border-secondary fs-6 ms-1">{{ state.ha_mains.amps }} A</span>
+                                        </div>
+                                        <p class="small text-muted mb-1">Calculated at {{ config.ha_mains_voltage or 120 }}V nominal</p>
+                                        <span class="badge bg-success p-1">Normal Draw</span>
+                                    {% else %}
+                                        <h3 class="status-outage mb-1 fs-5">MAINS DROPPED</h3>
+                                        <div class="lead mb-1 fs-5 text-danger fw-bold">
+                                            {{ "{:,.0f}".format(state.ha_mains.watts) }} W
+                                            <span class="badge bg-danger bg-opacity-25 text-danger border border-danger fs-6 ms-1">{{ state.ha_mains.amps }} A</span>
+                                        </div>
+                                        <p class="small text-danger fw-bold mb-1">Below {{ config.ha_mains_threshold_w or 10 }} W threshold</p>
+                                        {% if state.is_outage %}
+                                            <div class="small text-warning mt-1">⚠️ Correlated with active utility grid outage</div>
+                                        {% else %}
+                                            <div class="small text-info mt-1">ℹ️ Utility grid shows OK (possible local breaker trip)</div>
+                                        {% endif %}
+                                    {% endif %}
+                                {% else %}
+                                    <p class="text-muted small">Awaiting initial sensor data...</p>
+                                {% endif %}
+
+                                <div class="text-muted small mt-2">
+                                    Last Mains Check: <span>{% if state.ha_mains.last_check %}{{ state.ha_mains.last_check }}{% else %}Pending...{% endif %}</span>
+                                    {% if config.ha_mains_entity %}
+                                        <br><span class="text-muted" style="font-size: 0.75rem;">Entity: {{ config.ha_mains_entity }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
                         {% endif %}
-                    {% elif state.is_outage %}
-                        <h2 class="status-outage mt-2">OUTAGE ACTIVE</h2>
-                        <p class="lead mt-2"><strong>{{ state.customers_affected }}</strong> customers affected.</p>
-                        <p class="mb-1">Est. Restoration: <strong>{{ state.etr }}</strong></p>
-                        <p>Duration: <strong>{{ duration }} minutes</strong></p>
-                        {% if state.alert_sent %}
-                            <span class="badge bg-danger p-2">Area Alert Sent</span>
-                        {% else %}
-                            <span class="badge bg-warning text-dark p-2">Alert triggers at {{ config.threshold_mins }} mins</span>
-                        {% endif %}
-                    {% else %}
-                        <h2 class="status-ok mt-2">POWER ONLINE</h2>
-                        <p class="lead mt-2">0 customers affected.</p>
-                        <span class="badge bg-success p-2">All Clear</span>
-                    {% endif %}
-                    
-                    <div class="mt-auto pt-4 text-muted small">
-                        Last API Check: <span id="gp-check">{% if state.last_check %}{{ state.last_check }}{% elif state.error_msg %}Error{% else %}Pending...{% endif %}</span><br>
-                        {% if state.error_msg %}<span class="text-danger">Error: {{ state.error_msg }}</span>{% endif %}
                     </div>
                 </div>
             </div>
@@ -139,8 +234,13 @@
                         {% for ups_name, ups_info in state.ups_data.items() %}
                             <div class="p-3 border border-secondary rounded" style="background-color: #2a2a2a;">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h5 class="mb-0 text-info">{{ ups_name }}</h5>
-                                    {% if "OB" in ups_info.status %}
+                                    <div>
+                                        <h5 class="mb-0 text-info">{{ ups_info.name or ups_name }}</h5>
+                                        {% if ups_info.source %}<div class="small text-muted">{{ ups_info.source }}</div>{% endif %}
+                                    </div>
+                                    {% if ups_info.online is defined and not ups_info.online %}
+                                        <span class="badge bg-warning text-dark fs-6">STALE</span>
+                                    {% elif "OB" in ups_info.status %}
                                         <span class="badge bg-danger fs-6">ON BATTERY</span>
                                     {% elif "OL" in ups_info.status %}
                                         <span class="badge bg-success fs-6">ONLINE</span>
@@ -151,6 +251,9 @@
                                 <div class="small">
                                     Battery: <strong>{{ ups_info.charge }}%</strong> &nbsp;|&nbsp; 
                                     Est. Runtime: <strong>{{ ups_info.runtime_mins }} mins</strong>
+                                    {% if ups_info.online is defined and not ups_info.online %}
+                                        <div class="text-warning mt-1">Last successful poll: {{ ups_info.last_check or 'Unknown' }}</div>
+                                    {% endif %}
                                 </div>
                             </div>
                         {% endfor %}
@@ -344,10 +447,6 @@
                     outage-tracker
                 </a>
                 <a href="https://github.com/NightHawkATL/outage-tracker/releases" target="_blank" id="versionDisplay" class="text-muted text-decoration-none">{{ app_version }}</a>
-                
-                <a href="https://github.com/NightHawkATL/outage-tracker/releases/latest" target="_blank" id="updateBadge" class="d-none ms-2 px-1 rounded small fw-bold bg-success text-white border border-success text-decoration-none">
-                    New Update!
-                </a>
             </div>
         </div>
 
@@ -389,8 +488,10 @@
 
         async function checkForUpdates() {
             try {
-                const badge = document.getElementById('updateBadge');
                 const versionDisplay = document.getElementById('versionDisplay');
+                const versionLink = document.getElementById('versionLink');
+                const versionBadge = document.getElementById('versionBadge');
+                const versionIcon = document.getElementById('versionIcon');
                 const res = await fetch('/api/update');
                 if (res.ok) {
                     const data = await res.json();
@@ -403,22 +504,40 @@
                     }
 
                     if (data.update && data.latest) {
-                        badge.innerText = `Update: ${data.latest}`;
-                        badge.classList.remove('d-none');
-                        badge.href = `https://hub.docker.com/r/nighthawkatl/outage-tracker/tags`;
-                        badge.classList.add('animate-pulse');
+                        if (versionLink) {
+                            versionLink.href = 'https://github.com/NightHawkATL/outage-tracker/releases/latest';
+                        }
+                        if (versionBadge) {
+                            versionBadge.className = 'badge ms-2 fs-6 text-dark';
+                            versionBadge.style.backgroundColor = '#ffc107';
+                            versionBadge.style.verticalAlign = 'middle';
+                            versionBadge.title = `Update available: ${data.latest} — Click to view release`;
+                        }
+                        if (versionIcon) {
+                            versionIcon.innerHTML = '';
+                            versionIcon.className = 'd-none';
+                        }
                     } else {
-                        badge.classList.add('d-none');
+                        if (versionLink) {
+                            versionLink.href = 'https://github.com/NightHawkATL/outage-tracker/releases';
+                        }
+                        if (versionBadge) {
+                            versionBadge.className = 'badge ms-2 fs-6 bg-success text-white';
+                            versionBadge.style.backgroundColor = '';
+                            versionBadge.style.verticalAlign = 'middle';
+                            versionBadge.title = 'Up to date';
+                        }
+                        if (versionIcon) {
+                            versionIcon.innerHTML = '✓';
+                            versionIcon.className = 'me-1';
+                        }
                     }
                     if (data.latest && versionDisplay) {
                         versionDisplay.title = `Latest: ${data.latest}`;
                     }
-                } else {
-                    badge.classList.add('d-none');
                 }
             } catch (e) {
-                const badge = document.getElementById('updateBadge');
-                if (badge) badge.classList.add('d-none');
+                // Update check failed silently
             }
         }
     </script>

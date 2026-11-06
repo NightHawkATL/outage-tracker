@@ -104,8 +104,12 @@ def needs_fast_refresh():
 
     if state.get("nut_enabled"):
         for ups in state.get("ups_data", {}).values():
-            if "OB" in ups.get("status", ""):
+            if ups.get("online", True) and "OB" in ups.get("status", ""):
                 return True
+
+    ha_mains = state.get("ha_mains", {})
+    if ha_mains.get("configured") and not ha_mains.get("online", True):
+        return True
 
     last_check = state.get("last_check") or ""
     return "Discover" in last_check or "Heal" in last_check
@@ -424,6 +428,11 @@ def load_config():
             cfg.setdefault("mqtt_password", "")
             cfg.setdefault("mqtt_topic_prefix", "outage_tracker")
             cfg.setdefault("mqtt_discovery_prefix", "homeassistant")
+            cfg.setdefault("ha_url", "")
+            cfg.setdefault("ha_token", "")
+            cfg.setdefault("ha_mains_entity", "")
+            cfg.setdefault("ha_mains_voltage", 120)
+            cfg.setdefault("ha_mains_threshold_w", 10)
             
             if "admin_username" not in cfg:
                 cfg["admin_username"] = "admin"
@@ -456,7 +465,9 @@ def load_config():
         "home_public_ip": "", "cloudflare_radar_token": "",
         "watchdog_isp_override": "", "watchdog_isp_override_2": "",
         "mqtt_host": "", "mqtt_port": 1883, "mqtt_username": "", "mqtt_password": "",
-        "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant"
+        "mqtt_topic_prefix": "outage_tracker", "mqtt_discovery_prefix": "homeassistant",
+        "ha_url": "", "ha_token": "", "ha_mains_entity": "",
+        "ha_mains_voltage": 120, "ha_mains_threshold_w": 10
     }
     save_config(config)
     return config
@@ -557,6 +568,19 @@ state = {
     "snmp": {
         "1": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False},
         "2": {"online": False, "uptime_s": None, "last_check": None, "ever_online": False}
+    },
+    "ha_mains": {
+        "configured": False,
+        "online": False,
+        "watts": None,
+        "amps": None,
+        "voltage": 120,
+        "unit": "W",
+        "last_check": None,
+        "error": None,
+        "alert_sent": False,
+        "down_time": None,
+        "low_since": None
     }
 }
 
@@ -658,6 +682,17 @@ def build_dashboard_snapshot():
             "radar_status": wd_state.get("radar_status"),
         }
 
+    ha_mains_snap = {
+        "configured": bool(state.get("ha_mains", {}).get("configured")),
+        "online": state.get("ha_mains", {}).get("online"),
+        "watts": state.get("ha_mains", {}).get("watts"),
+        "amps": state.get("ha_mains", {}).get("amps"),
+        "voltage": state.get("ha_mains", {}).get("voltage"),
+        "unit": state.get("ha_mains", {}).get("unit", "W"),
+        "last_check": state.get("ha_mains", {}).get("last_check"),
+        "error": state.get("ha_mains", {}).get("error"),
+    }
+
     snmp_devices = {}
     for s_id in ["1", "2"]:
         snmp_state = state["snmp"][s_id]
@@ -675,23 +710,40 @@ def build_dashboard_snapshot():
     ups_on_battery = 0
     for ups_name, ups_state in state["ups_data"].items():
         status = ups_state.get("status", "UNKNOWN")
-        if "OB" in status:
+        is_online = ups_state.get("online", True)
+        if is_online and "OB" in status:
             ups_on_battery += 1
         ups[ups_name] = {
-            "status": status,
+            "name": ups_state.get("name", ups_name),
+            "status": status if is_online else "STALE",
+            "last_status": status,
+            "online": is_online,
+            "stale": not is_online,
+            "source": ups_state.get("source"),
+            "last_check": ups_state.get("last_check"),
             "charge": ups_state.get("charge"),
             "runtime_mins": ups_state.get("runtime_mins"),
             "alert_sent": ups_state.get("alert_sent", False),
-            "on_battery": "OB" in status,
+            "on_battery": is_online and "OB" in status,
         }
 
     overall_status = "ok"
+    ha_mains_state = state.get("ha_mains", {})
+    ha_mains_outage = (
+        ha_mains_state.get("configured")
+        and not ha_mains_state.get("error")
+        and ha_mains_state.get("watts") is not None
+        and ha_mains_state.get("online") is False
+    )
     if state.get("error_msg"):
         overall_status = "error"
-    elif state.get("is_outage") or ups_on_battery > 0:
+    elif state.get("is_outage") or ups_on_battery > 0 or ha_mains_outage:
         overall_status = "alert"
-    elif any(item["online"] is False for item in watchdogs.values() if item["target"]) or any(
-        item["online"] is False for item in snmp_devices.values() if item["ip"]
+    elif (
+        state.get("nut_error")
+        or any(not ups_state.get("online", True) for ups_state in state.get("ups_data", {}).values())
+        or any(item["online"] is False for item in watchdogs.values() if item["target"])
+        or any(item["online"] is False for item in snmp_devices.values() if item["ip"])
     ):
         overall_status = "warning"
 
@@ -726,6 +778,7 @@ def build_dashboard_snapshot():
         "snmp": {
             "devices": snmp_devices,
         },
+        "ha_mains": ha_mains_snap,
     }
 
 def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
@@ -751,6 +804,11 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
                 "summary_topic": summary_topic,
                 "discovery_prefix": discovery_prefix,
                 "ups_names": sorted(snapshot["nut"]["ups"].keys()),
+                "ups_sources": {
+                    name: snapshot["nut"]["ups"][name].get("source")
+                    for name in sorted(snapshot["nut"]["ups"].keys())
+                },
+                "ups_fields": ["status", "charge", "runtime_mins", "on_battery", "online"],
             },
             sort_keys=True,
         ).encode('utf-8')
@@ -868,16 +926,20 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
         for ups_name in sorted(snapshot["nut"]["ups"].keys()):
             ups_slug = sanitize_topic_part(ups_name)
             ups_topic = f"{topic_prefix}/ups/{ups_slug}"
+            ups_data = snapshot["nut"]["ups"][ups_name]
+            ups_display_name = ups_data.get("name", ups_name)
+            source_label = f" ({ups_data['source']})" if ups_data.get("source") else ""
             for field, label, component in [
                 ("status", "Status", "sensor"),
                 ("charge", "Charge", "sensor"),
                 ("runtime_mins", "Runtime Minutes", "sensor"),
                 ("on_battery", "On Battery", "binary_sensor"),
+                ("online", "Online", "binary_sensor"),
             ]:
                 object_id = f"ups_{ups_slug}_{field}"
                 discovery_topic = f"{discovery_prefix}/{component}/outage_tracker/{object_id}/config"
                 payload = {
-                    "name": f"UPS {ups_name} {label}",
+                    "name": f"UPS {ups_display_name}{source_label} {label}",
                     "unique_id": f"outage_tracker_{object_id}",
                     "state_topic": ups_topic,
                     "value_template": f"{{{{ value_json.{field} }}}}",
@@ -892,8 +954,12 @@ def mqtt_messages_for_snapshot(snapshot, force_discovery=False):
                     payload["icon"] = "mdi:battery-clock"
                 elif field == "status":
                     payload["icon"] = "mdi:battery-heart-variant"
-                else:
+                elif field == "on_battery":
                     payload["device_class"] = "battery"
+                    payload["payload_on"] = "True"
+                    payload["payload_off"] = "False"
+                else:
+                    payload["device_class"] = "connectivity"
                     payload["payload_on"] = "True"
                     payload["payload_off"] = "False"
                 messages.append({"topic": discovery_topic, "payload": json.dumps(payload), "retain": True, "qos": 1})
@@ -1025,6 +1091,198 @@ def api_update():
         "update": has_update,
         "error": error
     })
+
+def get_ha_status(url, token):
+    if not url or not url.strip():
+        return "Not Configured"
+    url = url.strip().rstrip("/")
+    decrypted_token = decrypt_if_possible(token) if token else ""
+    if not decrypted_token:
+        return "Missing Token"
+    headers = {"Authorization": f"Bearer {decrypted_token}"}
+    try:
+        resp = requests.get(f"{url}/api/", headers=headers, timeout=4)
+        if resp.status_code == 200:
+            return "Connected"
+        elif resp.status_code in (401, 403):
+            return "Auth Error (Invalid Token)"
+        return f"HTTP {resp.status_code}"
+    except Exception as exc:
+        return "Offline / Unreachable"
+
+
+def poll_ha_mains():
+    while True:
+        url = app_config.get("ha_url", "").strip().rstrip("/")
+        raw_token = app_config.get("ha_token", "")
+        token = decrypt_if_possible(raw_token) if raw_token else ""
+        entity = app_config.get("ha_mains_entity", "").strip()
+        voltage = float(app_config.get("ha_mains_voltage", 120) or 120)
+        threshold_w = float(app_config.get("ha_mains_threshold_w", 10) if app_config.get("ha_mains_threshold_w") is not None else 10)
+
+        ha_state = state["ha_mains"]
+
+        if not url or not token or not entity:
+            ha_state["configured"] = False
+            ha_state["online"] = False
+            ha_state["watts"] = None
+            ha_state["amps"] = None
+            ha_state["last_check"] = None
+            ha_state["error"] = None
+            ha_state["down_time"] = None
+            ha_state["low_since"] = None
+            ha_state["alert_sent"] = False
+            time.sleep(10)
+            continue
+
+        ha_state["configured"] = True
+        ha_state["voltage"] = voltage
+
+        headers = {"Authorization": f"Bearer {token}"}
+        endpoint = f"{url}/api/states/{entity}"
+        now_dt = datetime.now()
+        now_str = now_dt.strftime("%Y-%m-%d %I:%M %p")
+
+        try:
+            resp = requests.get(endpoint, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_val = data.get("state", "")
+                attrs = data.get("attributes", {})
+                unit = str(attrs.get("unit_of_measurement", "W")).strip()
+
+                try:
+                    val_float = float(raw_val)
+                    if unit.lower() in ("kw", "kilowatt", "kilowatts"):
+                        watts = round(val_float * 1000.0, 1)
+                    else:
+                        watts = round(val_float, 1)
+
+                    amps = round(watts / voltage, 2) if voltage > 0 else 0.0
+
+                    ha_state["watts"] = watts
+                    ha_state["amps"] = amps
+                    ha_state["unit"] = "W"
+                    ha_state["last_check"] = now_str
+                    ha_state["error"] = None
+
+                    is_online = (watts > threshold_w)
+
+                    if not is_online:
+                        if ha_state.get("low_since") is None:
+                            ha_state["low_since"] = now_dt
+                        if ha_state["online"] or ha_state["down_time"] is None:
+                            ha_state["down_time"] = now_dt
+                            hist = load_history()
+                            hist.setdefault("grid", [])
+                            hist["grid"].append({
+                                "time": now_str,
+                                "status": f"HOME MAINS OFFLINE ({watts} W <= {threshold_w} W threshold)"
+                            })
+                            save_history(hist)
+
+                        down_secs = (now_dt - ha_state["low_since"]).total_seconds()
+                        if down_secs >= 60 and not ha_state.get("alert_sent"):
+                            corr_note = " (Utility grid also reports outage!)" if state.get("is_outage") else " (Utility grid shows OK - possible local breaker/feed drop)"
+                            send_pushover("⚠️ Home Mains Power Dropped", f"Home Mains draw dropped to {watts} W (Threshold: {threshold_w} W).{corr_note}", priority=1)
+                            ha_state["alert_sent"] = True
+                    else:
+                        if not ha_state["online"] and ha_state.get("down_time"):
+                            elapsed_mins = int((now_dt - ha_state["down_time"]).total_seconds() / 60)
+                            hist = load_history()
+                            hist.setdefault("grid", [])
+                            hist["grid"].append({
+                                "time": now_str,
+                                "status": f"HOME MAINS RESTORED ({watts} W, draw restored after {elapsed_mins} mins)"
+                            })
+                            save_history(hist)
+
+                            if ha_state.get("alert_sent"):
+                                send_pushover("✅ Home Mains Power Restored", f"Home Mains draw restored to {watts} W ({amps} A).\nDowntime: {elapsed_mins} mins.", priority=0)
+
+                        ha_state["down_time"] = None
+                        ha_state["low_since"] = None
+                        ha_state["alert_sent"] = False
+
+                    ha_state["online"] = is_online
+
+                except (ValueError, TypeError):
+                    ha_state["error"] = f"Invalid numeric state from {entity}: '{raw_val}'"
+                    ha_state["last_check"] = now_str
+                    ha_state["low_since"] = None
+            else:
+                ha_state["error"] = f"HA API HTTP {resp.status_code}"
+                ha_state["last_check"] = now_str
+                ha_state["low_since"] = None
+        except Exception as exc:
+            ha_state["error"] = f"HA connection error: {exc}"
+            ha_state["last_check"] = now_str
+            ha_state["low_since"] = None
+
+        interval = 30 if (not ha_state.get("online") or state.get("is_outage")) else 60
+        for _ in range(interval):
+            time.sleep(1)
+
+
+@app.route("/test-ha", methods=["POST"])
+@login_required
+def test_ha():
+    test_data = request.get_json(silent=True)
+    if not isinstance(test_data, dict):
+        test_data = {}
+
+    url = str(test_data.get("ha_url", app_config.get("ha_url", "")) or "").strip().rstrip("/")
+    submitted_token = str(test_data.get("ha_token", "") or "").strip()
+    token_enc = app_config.get("ha_token", "")
+    token = submitted_token or (decrypt_if_possible(token_enc) if token_enc else "")
+    entity = str(test_data.get("ha_mains_entity", app_config.get("ha_mains_entity", "")) or "").strip()
+    try:
+        voltage = float(test_data.get("ha_mains_voltage", app_config.get("ha_mains_voltage", 120)) or 120)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Nominal voltage must be numeric."}), 400
+
+    if not url:
+        return jsonify({"status": "error", "message": "Home Assistant URL is not configured."}), 400
+    if not token:
+        return jsonify({"status": "error", "message": "Home Assistant Token is missing."}), 400
+
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        base_resp = requests.get(f"{url}/api/", headers=headers, timeout=5)
+        if base_resp.status_code != 200:
+            return jsonify({"status": "error", "message": f"HA API returned HTTP {base_resp.status_code}"}), 400
+
+        if entity:
+            ent_resp = requests.get(f"{url}/api/states/{entity}", headers=headers, timeout=5)
+            if ent_resp.status_code == 200:
+                ent_data = ent_resp.json()
+                raw_val = ent_data.get("state", "")
+                attrs = ent_data.get("attributes", {})
+                unit = str(attrs.get("unit_of_measurement", "W")).strip()
+                friendly = attrs.get("friendly_name", entity)
+                try:
+                    fval = float(raw_val)
+                    watts = round(fval * 1000.0, 1) if unit.lower() in ("kw", "kilowatt", "kilowatts") else round(fval, 1)
+                    amps = round(watts / voltage, 2) if voltage > 0 else 0.0
+                    return jsonify({
+                        "status": "success",
+                        "message": f"Connected! {friendly}: {watts} W ({amps} A @ {int(voltage)}V)"
+                    })
+                except Exception:
+                    return jsonify({
+                        "status": "success",
+                        "message": f"Connected to HA! Entity state: '{raw_val}' {unit} (non-numeric)"
+                    })
+            else:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Connected to HA, but entity '{entity}' returned HTTP {ent_resp.status_code}"
+                }), 400
+
+        return jsonify({"status": "success", "message": "Connected to Home Assistant API successfully!"})
+    except Exception as exc:
+        return jsonify({"status": "error", "message": f"Connection failed: {exc}"}), 500
+
 
 @app.route("/")
 @login_required
@@ -1210,6 +1468,11 @@ def config_page():
             "pushover_token": get_secure("pushover_token"), "ts_authkey": new_ts_key,
             "ts_accept_routes": ts_accept_routes,
             "ts_update_check_interval_hours": get_int("ts_update_check_interval_hours", 24),
+            "ha_url": request.form.get("ha_url", "").strip(),
+            "ha_token": get_encrypted_secret("ha_token"),
+            "ha_mains_entity": request.form.get("ha_mains_entity", "").strip(),
+            "ha_mains_voltage": get_int("ha_mains_voltage", 120),
+            "ha_mains_threshold_w": get_int("ha_mains_threshold_w", 10),
         })
         save_config(app_config)
         state["nut_enabled"] = bool(app_config.get("nut_host") or app_config.get("nut_host_2"))
@@ -1234,6 +1497,7 @@ def config_page():
         mqtt_last_published=state.get("mqtt_last_published"),
         mqtt_errors=mqtt_errors,
         tailscale_errors=tailscale_errors,
+        ha_status=get_ha_status(app_config.get("ha_url"), app_config.get("ha_token")),
     )
 
 @app.route("/test-pushover", methods=["POST"])
@@ -1242,6 +1506,17 @@ def test_pushover():
     if send_pushover("🔔 Pushover Test", "Configuration working perfectly.", priority=0, include_map=True):
         return jsonify({"status": "success", "message": "Test sent! Check your device."})
     return jsonify({"status": "error", "message": "Failed to send alert. Check keys."}), 500
+
+@app.route("/service-errors/clear", methods=["POST"])
+@login_required
+def clear_service_errors_route():
+    service = request.form.get("service", "")
+    if service not in ("mqtt", "tailscale"):
+        return jsonify({"status": "error", "message": "Unknown service."}), 400
+    hist = load_history()
+    hist[f"{service}_errors"] = []
+    save_history(hist)
+    return jsonify({"status": "success"})
 
 @app.route("/mqtt/republish", methods=["POST"])
 @login_required
@@ -1820,16 +2095,76 @@ def poll_nut():
         c_thresh2 = app_config.get("ups_min_runtime_2", 10)
 
         errors = []
+        sources = []
+        for source_id, source_label, host, port, names, threshold in [
+            ("primary", "Primary NUT", c_host1, c_port1, c_names1, c_thresh1),
+            ("secondary", "Secondary NUT", c_host2, c_port2, c_names2, c_thresh2),
+        ]:
+            if not host:
+                continue
+            data = fetch_nut_data(host, port, names)
+            sources.append({
+                "id": source_id,
+                "key": f"{source_id}:{host}:{port}",
+                "label": source_label,
+                "host": host,
+                "port": port,
+                "threshold": threshold,
+                "data": data,
+            })
+            if data is None:
+                errors.append(f"{source_label} ({host}) offline")
 
-        def process_data(multi_ups_data, threshold):
+        active_sources = {source["key"] for source in sources}
+        for ups_state in state["ups_data"].values():
+            if ups_state.get("source_key") and ups_state["source_key"] not in active_sources:
+                ups_state["online"] = False
+
+        name_counts = {}
+        for source in sources:
+            if source["data"] is None:
+                continue
+            for ups_name in source["data"]:
+                name_counts[ups_name] = name_counts.get(ups_name, 0) + 1
+
+        def process_data(multi_ups_data, source):
+            source_id = source["id"]
+            source_label = f"{source['label']} ({source['host']})"
+            threshold = source["threshold"]
+            seen_keys = set()
             for ups_name, vars_dict in multi_ups_data.items():
-                if ups_name not in state["ups_data"]:
-                    state["ups_data"][ups_name] = {"alert_sent": False, "is_ob": False, "ob_start_time": None, "min_charge": 100}
-                
-                ups_state = state["ups_data"][ups_name]
+                duplicate_name = name_counts.get(ups_name, 0) > 1 or any(
+                    existing.get("name", existing_name) == ups_name
+                    and existing.get("source_key") != source["key"]
+                    for existing_name, existing in state["ups_data"].items()
+                )
+                state_key = f"{source['key']}/{ups_name}" if duplicate_name else ups_name
+                existing_key = next((
+                    existing_name
+                    for existing_name, existing in state["ups_data"].items()
+                    if existing.get("source_key") == source["key"]
+                    and existing.get("name", existing_name) == ups_name
+                ), None)
+                if existing_key and existing_key != state_key:
+                    ups_state = state["ups_data"].pop(existing_key)
+                    state["ups_data"][state_key] = ups_state
+                elif state_key in state["ups_data"]:
+                    ups_state = state["ups_data"][state_key]
+                else:
+                    ups_state = {"alert_sent": False, "is_ob": False, "ob_start_time": None, "min_charge": 100}
+                    state["ups_data"][state_key] = ups_state
+
+                was_stale = ups_state.get("online") is False
+                ups_state["name"] = ups_name
+                ups_state["source_id"] = source_id
+                ups_state["source_key"] = source["key"]
+                ups_state["source"] = source_label
                 ups_state["status"] = vars_dict.get("ups.status", "UNKNOWN")
                 ups_state["charge"] = int(float(vars_dict.get("battery.charge", 0)))
                 ups_state["runtime_mins"] = int(float(vars_dict.get("battery.runtime", 0))) // 60
+                ups_state["online"] = True
+                ups_state["last_check"] = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+                seen_keys.add(state_key)
                 
                 if "OB" in ups_state["status"]:
                     if not ups_state["is_ob"]:
@@ -1846,29 +2181,33 @@ def poll_nut():
 
                 elif "OL" in ups_state["status"]:
                     if ups_state["is_ob"] and ups_state["ob_start_time"]:
-                        elapsed = (datetime.now() - ups_state["ob_start_time"]).total_seconds() / 60
-                        hist = load_history()
-                        hist["ups"].append({
-                            "ups_name": ups_name, "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
-                            "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed), "min_charge": ups_state["min_charge"]
-                        })
-                        save_history(hist)
+                        if not was_stale:
+                            elapsed = (datetime.now() - ups_state["ob_start_time"]).total_seconds() / 60
+                            hist = load_history()
+                            hist["ups"].append({
+                                "ups_name": ups_name, "start": ups_state["ob_start_time"].strftime("%Y-%m-%d %I:%M %p"),
+                                "end": datetime.now().strftime("%Y-%m-%d %I:%M %p"), "duration_mins": int(elapsed), "min_charge": ups_state["min_charge"]
+                            })
+                            save_history(hist)
+                            if ups_state["alert_sent"]:
+                                send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
                         ups_state["is_ob"] = False
                         ups_state["ob_start_time"] = None
-                        
-                    if ups_state["alert_sent"]:
-                        send_pushover(title=f"🔌 UPS {ups_name} Restored", message="Back on grid power.", priority=0)
                     ups_state["alert_sent"] = False
 
-        if c_host1:
-            data1 = fetch_nut_data(c_host1, c_port1, c_names1)
-            if data1 is not None: process_data(data1, c_thresh1)
-            else: errors.append(f"Primary NUT ({c_host1}) offline")
+            return seen_keys
 
-        if c_host2:
-            data2 = fetch_nut_data(c_host2, c_port2, c_names2)
-            if data2 is not None: process_data(data2, c_thresh2)
-            else: errors.append(f"Secondary NUT ({c_host2}) offline")
+        for source in sources:
+            if source["data"] is None:
+                for ups_state in state["ups_data"].values():
+                    if ups_state.get("source_key") == source["key"]:
+                        ups_state["online"] = False
+                continue
+
+            seen_keys = process_data(source["data"], source)
+            for state_key, ups_state in state["ups_data"].items():
+                if ups_state.get("source_key") == source["key"] and state_key not in seen_keys:
+                    ups_state["online"] = False
 
         state["nut_last_check"] = datetime.now().strftime("%I:%M:%S %p")
         state["nut_error"] = " | ".join(errors) if errors else None
@@ -2002,4 +2341,5 @@ if __name__ == "__main__":
     threading.Thread(target=poll_snmp, daemon=True).start()
     threading.Thread(target=mqtt_heartbeat_loop, daemon=True).start()
     threading.Thread(target=tailscale_update_monitor_loop, daemon=True).start()
+    threading.Thread(target=poll_ha_mains, daemon=True).start()
     app.run(host="0.0.0.0", port=8080)
